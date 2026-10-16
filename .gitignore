@@ -1,0 +1,6 @@
+data/
+*.o
+c/whereisup
+c/img2ppm
+*.ppm
+__pycache__/
