@@ -960,14 +960,14 @@ def train_steps(net, imgs, y, epochs, batch, lr, seed=0, momentum=0.9,
         std = np.ones(3, dtype=np.float32)
     vel = {id(p): np.zeros_like(p) for p, _ in net.params_and_grads()}
     n = imgs.shape[0]
-    total = epochs * max(1, n // batch)
+    total = epochs * max(1, (n + batch - 1) // batch)
     step = 0
     hist = []
     for ep in range(epochs):
         order = rng.permutation(n)
         ep_loss = 0.0
         nb = 0
-        for i in range(0, n - batch + 1, batch):
+        for i in range(0, n, batch):
             idx = order[i:i + batch]
             aug, labels = D.augment(imgs[idx], rng)
             x = D.normalize(aug, mean, std)
