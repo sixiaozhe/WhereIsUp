@@ -1142,6 +1142,12 @@ class TestExport(unittest.TestCase):
         self.assertTrue(np.allclose(parse("B1"), d["conv1.b"], atol=1e-4))
         self.assertTrue(np.allclose(parse("NORM_STD"), [0.25, 0.25, 0.25], atol=1e-6))
 
+    def test_cfloat_emits_valid_c_literals(self):
+        self.assertEqual(E._cfloat(0.0), "0.0f")
+        self.assertEqual(E._cfloat(1.0), "1.0f")
+        self.assertEqual(E._cfloat(-3.0), "-3.0f")
+        self.assertEqual(E._cfloat(0.25), "0.25f")
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -1164,12 +1170,23 @@ import hashlib
 import numpy as np
 
 
+def _cfloat(v):
+    """把浮点数格式化成合法的 C float 字面量（0 → 0.0f，1 → 1.0f）。"""
+    v = float(v)
+    if v != v or v in (float("inf"), float("-inf")):
+        raise ValueError(f"非有限权重，无法导出为 C 字面量: {v}")
+    s = f"{v:.8g}"
+    if not any(c in s for c in ".eE"):
+        s += ".0"
+    return s + "f"
+
+
 def _fmt_array(name, arr, per_line=8):
     flat = arr.astype(np.float32).reshape(-1)
     lines = [f"static const float {name}[{flat.size}] = {{"]
     row = []
     for i, v in enumerate(flat):
-        row.append(f"{v:.8g}f")
+        row.append(_cfloat(v))
         if len(row) == per_line:
             lines.append("    " + ", ".join(row) + ",")
             row = []
