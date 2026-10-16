@@ -1628,7 +1628,6 @@ git commit -m "feat(c): 纯 C 前向推理与 whereisup CLI"
 set -eu
 TOL="1e-4"
 n="${1:-8}"
-tmp="$(mktemp -d)"
 pass=0
 i=0
 for f in data/ppm/*.ppm; do
@@ -1649,20 +1648,21 @@ PY
   pass=$((pass+1))
   i=$((i+1))
 done
-rm -rf "$tmp"
 echo "parity passed for $pass images (tol $TOL)"
 ```
 
-- [ ] **Step 2: 运行前需有真实权重**
+- [ ] **Step 2: 从同一份权重导出后运行**
 
-先完成 Task 11 的训练与导出，或临时用 Task 8 Step 4 的假权重跑一次确认脚本机制可用：
+对拍要求 **C 端的 `c/weights.h` 与 numpy 端读取的 `data/best.npz` 是同一份权重**，因此先导出、再编译、最后对拍：
 
 Run:
 ```bash
 chmod +x scripts/check_parity.sh
-bash scripts/check_parity.sh 4
+PYTHONPATH=src python3 src/export_weights.py
+make -C c whereisup
+bash scripts/check_parity.sh 8
 ```
-Expected: `parity passed for 4 images (tol 1e-4)`。
+Expected: `parity passed for 8 images (tol 1e-4)`（即使 `best.npz` 只来自 2 epoch 的冒烟训练，只要两侧权重同源即可通过）。
 
 - [ ] **Step 3: 提交**
 
