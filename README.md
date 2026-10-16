@@ -1,7 +1,33 @@
-# WhereIsUp
+# WhereIsUp —— 判断图片的“上边”在哪
 
-判断一张（被旋转的）照片的“上边”在哪个方向，并用纯 C 纠正方向。
+输入一张被旋转的照片，判断“上边”在 上/右/下/左 哪个方向，并输出纠正后的图片。
+权重是 C 数组，推理只需 gcc；训练用 Python3 + numpy 手写（无深度学习框架）。
 
-- 训练：`src/`（Python3 + numpy）
-- 推理：`c/`（gcc + 附带 stb 单头库，权重为 C 数组）
-- 教程：`docs/TUTORIAL.md`
+## 快速开始
+
+```bash
+# 1) 取数据（约 2000 张，可先小规模验证）
+bash scripts/download.sh 2000 400
+bash scripts/prepare.sh 64
+
+# 2) 训练（输出 data/best.npz, data/norm.npz, data/training_curve.csv）
+PYTHONPATH=src python3 src/train.py --epochs 10
+
+# 3) 导出权重为 C 数组
+PYTHONPATH=src python3 src/export_weights.py
+
+# 4) 编译并推理
+make -C c whereisup
+./c/whereisup path/to/photo.jpg -o fixed.png
+```
+
+## 目录
+
+- `src/` 训练与导出；`c/` 纯 C 推理；`docs/TUTORIAL.md` 从零教学。
+
+## 测试
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+bash scripts/check_parity.sh 8
+```
