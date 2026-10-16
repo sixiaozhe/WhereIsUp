@@ -70,7 +70,9 @@ unsigned char *read_ppm(const char *path, int *w, int *h, int *c) {
         got++;
     }
     fgetc(f);
-    int W = vals[0], H = vals[1], CH = vals[2];
+    int W = vals[0], H = vals[1];   /* vals[2] 是 maxval, P6 下忽略 */
+    (void)vals[2];
+    int CH = 3;                     /* P6 恒为 RGB 三通道 */
     unsigned char *buf = malloc((size_t)W * H * CH);
     if (fread(buf, 1, (size_t)W * H * CH, f) != (size_t)W * H * CH) { free(buf); fclose(f); return NULL; }
     fclose(f);
@@ -81,7 +83,7 @@ unsigned char *read_ppm(const char *path, int *w, int *h, int *c) {
 int write_ppm(const char *path, const unsigned char *data, int w, int h, int c) {
     FILE *f = fopen(path, "wb");
     if (!f) return -1;
-    fprintf(f, "P6\n%d %d\n%d\n", w, h, c);
+    fprintf(f, "P6\n%d %d\n255\n", w, h);
     fwrite(data, 1, (size_t)w * h * c, f);
     fclose(f);
     return 0;
