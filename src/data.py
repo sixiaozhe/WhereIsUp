@@ -115,3 +115,8 @@ def normalize(imgs, mean, std):
     x = imgs.astype(np.float32) / 255.0
     x = (x - mean.reshape(1, 1, 1, 3)) / std.reshape(1, 1, 1, 3)
     return np.transpose(x, (0, 3, 1, 2))
+
+
+def rotate_cw_batch(imgs, k):
+    """对一批 NHWC 图像施加同一个顺时针旋转角 k。"""
+    return np.rot90(imgs, -k, axes=(1, 2))
