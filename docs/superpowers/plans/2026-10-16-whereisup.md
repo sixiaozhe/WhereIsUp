@@ -1762,7 +1762,7 @@ bash scripts/download.sh 2000 400
 bash scripts/prepare.sh 64
 ls data/ppm | wc -l
 ```
-Expected: `>= 1500`（picsum 有效 id 约 1000+，够用）。若网络受限导致数量过少，向用户说明并记录实际数量。
+Expected: 约 900–1000（picsum 有效 id 上限约 1085，失效 id 自动跳过）。若网络受限导致数量过少（<300），向用户说明并记录实际数量；数量过少会显著影响准确率。
 
 - [ ] **Step 3: 训练**
 

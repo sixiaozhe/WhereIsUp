@@ -6,7 +6,7 @@
 ## 快速开始
 
 ```bash
-# 1) 取数据（约 2000 张，可先小规模验证）
+# 1) 取数据（picsum 可用 id 上限约 1085，实际约 1000 张；可先小规模验证）
 bash scripts/download.sh 2000 400
 bash scripts/prepare.sh 64
 

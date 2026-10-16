@@ -43,7 +43,7 @@ C 端用整数旋转表达同一件事：`correct` 等价于顺时针旋转 $(4-
 
 ### 1.2 数据集大小与标签来源
 
-- 数据来自 `scripts/download.sh`，从 `picsum.photos` 按 id（`0..1084`）下载免版权照片，默认每张 400×400，目标约 2000 张，存到 `data/raw/`。
+- 数据来自 `scripts/download.sh`，从 `picsum.photos` 按 id（`0..1084`）下载免版权照片，默认每张 400×400，最多约 1000 张（失效 id 自动跳过），存到 `data/raw/`。
 - `scripts/prepare.sh` 调用 `c/img2ppm` 把每张 JPEG 双线性缩放成 **64×64 RGB** 的 P6 PPM，存到 `data/ppm/`（默认 `SIZE=64`）。
 - **标签是免费的**：`picsum.photos` 的源照片都被视为"正立"。训练时在线地对每张源图随机抽一个 $k$，顺时针转 $k\cdot90^\circ$，旋转角就是标签。我们不需要人工标注——这正是这个任务的教学价值所在：**自监督式构造标签**，把"无标签图片"变成"无限多的带标签样本"。
 
@@ -693,7 +693,7 @@ $$s = \frac{\max|x|}{127},\qquad q = \operatorname{round}\!\left(\frac{x}{s}\rig
 ## 附：一键流程回顾
 
 ```bash
-# 取数据（约 2000 张；可先小规模验证）
+# 取数据（约 1000 张；可先小规模验证）
 bash scripts/download.sh 2000 400
 bash scripts/prepare.sh 64
 
