@@ -24,7 +24,8 @@ def _fmt_array(name, arr, per_line=8):
 
 def write_header(npz_path, mean, std, out_path, dims=None):
     d = np.load(npz_path)
-    md5 = hashlib.md5(open(npz_path, "rb").read()).hexdigest()
+    with open(npz_path, "rb") as f:
+        md5 = hashlib.md5(f.read()).hexdigest()
     dims = dims or {"C": 3, "H": 64, "W": 64, "OC1": 8, "OC2": 16, "CLASSES": 4}
     parts = [
         "/* 自动生成，请勿手改。",
