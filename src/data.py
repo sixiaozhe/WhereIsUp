@@ -97,9 +97,10 @@ def augment(imgs, rng, flip_p=0.5, jitter=0.10):
     labels = np.empty(n, dtype=np.int64)
     for i in range(n):
         k = int(rng.integers(0, 4))
-        img = rotate_cw(imgs[i], k)
+        img = imgs[i]
         if rng.random() < flip_p:
-            img = img[:, ::-1, :]
+            img = img[:, ::-1, :]        # 先翻转（翻转不改变“上”），再旋转
+        img = rotate_cw(img, k)
         img = img.astype(np.float32) / 255.0
         gain = 1.0 + rng.uniform(-jitter, jitter)
         bias = rng.uniform(-jitter / 2, jitter / 2)
