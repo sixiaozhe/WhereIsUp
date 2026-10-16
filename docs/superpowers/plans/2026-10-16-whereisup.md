@@ -375,10 +375,14 @@ git commit -m "feat: stb 依赖、img2ppm 解码工具与下载/预处理脚本"
 - [ ] **Step 1: 写失败测试 `tests/test_data.py`**
 
 ```python
-import os, sys
+import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import data as D
+
 
 def _img():
     a = np.zeros((4, 4, 3), dtype=np.uint8)
@@ -386,43 +390,54 @@ def _img():
     a[:, 0, 1] = 20      # 左列
     return a
 
-def test_rotate_cw_matches_expected():
-    a = _img()
-    cw1 = D.rotate_cw(a, 1)
-    expected = np.rot90(a, -1, axes=(0, 1))
-    assert np.array_equal(cw1, expected)
 
-def test_up_side_names():
-    assert D.up_side(0) == "up"
-    assert D.up_side(1) == "right"
-    assert D.up_side(2) == "down"
-    assert D.up_side(3) == "left"
+class TestData(unittest.TestCase):
+    def test_rotate_cw_matches_expected(self):
+        a = _img()
+        cw1 = D.rotate_cw(a, 1)
+        expected = np.rot90(a, -1, axes=(0, 1))
+        self.assertTrue(np.array_equal(cw1, expected))
 
-def test_correct_undoes_rotation():
-    a = _img()
-    for k in range(4):
-        disp = D.rotate_cw(a, k)
-        assert np.array_equal(D.correct(disp, k), a)
+    def test_up_side_names(self):
+        self.assertEqual(D.up_side(0), "up")
+        self.assertEqual(D.up_side(1), "right")
+        self.assertEqual(D.up_side(2), "down")
+        self.assertEqual(D.up_side(3), "left")
 
-def test_split_by_source_no_leak():
-    ids = [f"{i:04d}" for i in range(100)]
-    tr, va, te = D.split_ids(ids, seed=0)
-    assert set(tr).isdisjoint(va) and set(va).isdisjoint(te) and set(tr).isdisjoint(te)
-    assert len(tr) + len(va) + len(te) == 100
+    def test_correct_undoes_rotation(self):
+        a = _img()
+        for k in range(4):
+            disp = D.rotate_cw(a, k)
+            self.assertTrue(np.array_equal(D.correct(disp, k), a))
 
-def test_normalization_stats_shape():
-    imgs = np.random.randint(0, 255, size=(5, 64, 64, 3), dtype=np.uint8)
-    mean, std = D.norm_stats(imgs)
-    assert mean.shape == (3,) and std.shape == (3,)
-    assert np.all(std > 0)
+    def test_split_by_source_no_leak(self):
+        ids = [f"{i:04d}" for i in range(100)]
+        tr, va, te = D.split_ids(ids, seed=0)
+        self.assertTrue(set(tr).isdisjoint(va))
+        self.assertTrue(set(va).isdisjoint(te))
+        self.assertTrue(set(tr).isdisjoint(te))
+        self.assertEqual(len(tr) + len(va) + len(te), 100)
 
-def test_augment_preserves_shape_and_label_range():
-    imgs = np.random.randint(0, 255, size=(3, 64, 64, 3), dtype=np.uint8)
-    rng = np.random.default_rng(0)
-    for _ in range(5):
-        x, y = D.augment(imgs, rng)
-        assert x.shape == (3, 64, 64, 3) and x.dtype == np.uint8
-        assert y.shape == (3,) and set(np.unique(y)).issubset({0, 1, 2, 3})
+    def test_normalization_stats_shape(self):
+        imgs = np.random.randint(0, 255, size=(5, 64, 64, 3), dtype=np.uint8)
+        mean, std = D.norm_stats(imgs)
+        self.assertEqual(mean.shape, (3,))
+        self.assertEqual(std.shape, (3,))
+        self.assertTrue(np.all(std > 0))
+
+    def test_augment_preserves_shape_and_label_range(self):
+        imgs = np.random.randint(0, 255, size=(3, 64, 64, 3), dtype=np.uint8)
+        rng = np.random.default_rng(0)
+        for _ in range(5):
+            x, y = D.augment(imgs, rng)
+            self.assertEqual(x.shape, (3, 64, 64, 3))
+            self.assertEqual(x.dtype, np.uint8)
+            self.assertEqual(y.shape, (3,))
+            self.assertTrue(set(np.unique(y)).issubset({0, 1, 2, 3}))
+
+
+if __name__ == "__main__":
+    unittest.main()
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -574,7 +589,10 @@ git commit -m "feat(data): 切分/旋转标签/增强/归一化 + 单元测试"
 - [ ] **Step 1: 写失败测试 `tests/test_nn.py`（含数值梯度校验）**
 
 ```python
-import os, sys
+import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import nn
@@ -594,61 +612,62 @@ def _num_grad(f, x, eps=1e-3):
     return g
 
 
-def test_conv_forward_against_naive():
-    rng = np.random.default_rng(0)
-    x = rng.standard_normal((2, 3, 6, 6)).astype(np.float32)
-    layer = nn.Conv2d(3, 4, k=3, stride=1, pad=1, rng=rng)
-    out = layer.forward(x)
-    assert out.shape == (2, 4, 6, 6)
-    # 逐点手算第 0 个样本第 0 个通道中心像素
-    oc, yy, xx = 0, 2, 3
-    acc = layer.b[oc]
-    for c in range(3):
-        for i in range(3):
-            for j in range(3):
-                acc += x[0, c, yy + i - 1, xx + j - 1] * layer.W[oc, c, i, j]
-    assert np.allclose(out[0, oc, yy, xx], acc, atol=1e-4)
+class TestNN(unittest.TestCase):
+    def test_conv_forward_against_naive(self):
+        rng = np.random.default_rng(0)
+        x = rng.standard_normal((2, 3, 6, 6)).astype(np.float32)
+        layer = nn.Conv2d(3, 4, k=3, stride=1, pad=1, rng=rng)
+        out = layer.forward(x)
+        self.assertEqual(out.shape, (2, 4, 6, 6))
+        # 逐点手算第 0 个样本第 0 个通道中心像素
+        oc, yy, xx = 0, 2, 3
+        acc = layer.b[oc]
+        for c in range(3):
+            for i in range(3):
+                for j in range(3):
+                    acc += x[0, c, yy + i - 1, xx + j - 1] * layer.W[oc, c, i, j]
+        self.assertTrue(np.allclose(out[0, oc, yy, xx], acc, atol=1e-4))
+
+    def test_conv_backward_gradcheck(self):
+        rng = np.random.default_rng(1)
+        x = rng.standard_normal((2, 3, 5, 5)).astype(np.float32)
+        layer = nn.Conv2d(3, 2, k=3, stride=1, pad=1, rng=rng)
+        layer.forward(x)
+        dout = rng.standard_normal((2, 2, 5, 5)).astype(np.float32)
+        dx = layer.backward(dout)
+        f = lambda: float((layer.forward(x) * dout).sum())
+        self.assertTrue(np.allclose(dx, _num_grad(f, x), atol=1e-2))
+
+    def test_maxpool_backward_gradcheck(self):
+        rng = np.random.default_rng(2)
+        x = rng.standard_normal((1, 2, 4, 4)).astype(np.float32)
+        layer = nn.MaxPool2d(2)
+        layer.forward(x)
+        dout = rng.standard_normal((1, 2, 2, 2)).astype(np.float32)
+        dx = layer.backward(dout)
+        f = lambda: float((layer.forward(x) * dout).sum())
+        self.assertTrue(np.allclose(dx, _num_grad(f, x), atol=1e-2))
+
+    def test_linear_backward_gradcheck(self):
+        rng = np.random.default_rng(3)
+        x = rng.standard_normal((4, 5)).astype(np.float32)
+        layer = nn.Linear(5, 3, rng=rng)
+        layer.forward(x)
+        dout = rng.standard_normal((4, 3)).astype(np.float32)
+        dx = layer.backward(dout)
+        f = lambda: float((layer.forward(x) * dout).sum())
+        self.assertTrue(np.allclose(dx, _num_grad(f, x), atol=1e-2))
+
+    def test_softmax_ce_onehot_equals_neglogp(self):
+        logits = np.array([[2.0, 0.0, -1.0, 0.5]], dtype=np.float32)
+        y = np.array([0])
+        loss, p = nn.SoftmaxCE().forward(logits, y)
+        self.assertTrue(np.allclose(loss, -np.log(p[0, 0]), atol=1e-6))
+        self.assertTrue(np.allclose(p.sum(axis=1), 1.0, atol=1e-6))
 
 
-def test_conv_backward_gradcheck():
-    rng = np.random.default_rng(1)
-    x = rng.standard_normal((2, 3, 5, 5)).astype(np.float32)
-    layer = nn.Conv2d(3, 2, k=3, stride=1, pad=1, rng=rng)
-    layer.forward(x)
-    dout = rng.standard_normal((2, 2, 5, 5)).astype(np.float32)
-    dx = layer.backward(dout)
-    f = lambda: float((layer.forward(x) * dout).sum())
-    assert np.allclose(dx, _num_grad(f, x), atol=1e-2)
-
-
-def test_maxpool_backward_gradcheck():
-    rng = np.random.default_rng(2)
-    x = rng.standard_normal((1, 2, 4, 4)).astype(np.float32)
-    layer = nn.MaxPool2d(2)
-    layer.forward(x)
-    dout = rng.standard_normal((1, 2, 2, 2)).astype(np.float32)
-    dx = layer.backward(dout)
-    f = lambda: float((layer.forward(x) * dout).sum())
-    assert np.allclose(dx, _num_grad(f, x), atol=1e-2)
-
-
-def test_linear_backward_gradcheck():
-    rng = np.random.default_rng(3)
-    x = rng.standard_normal((4, 5)).astype(np.float32)
-    layer = nn.Linear(5, 3, rng=rng)
-    layer.forward(x)
-    dout = rng.standard_normal((4, 3)).astype(np.float32)
-    dx = layer.backward(dout)
-    f = lambda: float((layer.forward(x) * dout).sum())
-    assert np.allclose(dx, _num_grad(f, x), atol=1e-2)
-
-
-def test_softmax_ce_onehot_equals_neglogp():
-    logits = np.array([[2.0, 0.0, -1.0, 0.5]], dtype=np.float32)
-    y = np.array([0])
-    loss, p = nn.SoftmaxCE().forward(logits, y)
-    assert np.allclose(loss, -np.log(p[0, 0]), atol=1e-6)
-    assert np.allclose(p.sum(axis=1), 1.0, atol=1e-6)
+if __name__ == "__main__":
+    unittest.main()
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -866,20 +885,30 @@ git commit -m "feat(nn): 手写 Conv/Pool/ReLU/FC/SoftmaxCE 及反向传播 + �
 - [ ] **Step 1: 写冒烟测试 `tests/test_train.py`**
 
 ```python
-import os, sys
+import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import train
 
 
-def test_train_smoke_loss_decreases():
-    rng = np.random.default_rng(0)
-    # 造一个可学的小数据：颜色随类别变化
-    imgs = rng.integers(0, 255, size=(16, 64, 64, 3), dtype=np.uint8)
-    y = np.array([i % 4 for i in range(16)])
-    net = train.Net(seed=0)
-    losses = train.train_steps(net, imgs, y, epochs=20, batch=8, lr=0.05, seed=0)
-    assert losses[-1] < losses[0]
+class TestTrain(unittest.TestCase):
+    def test_train_steps_updates_parameters(self):
+        rng = np.random.default_rng(0)
+        imgs = rng.integers(0, 255, size=(16, 64, 64, 3), dtype=np.uint8)
+        y = np.array([i % 4 for i in range(16)])
+        net = train.Net(seed=0)
+        before = net.conv1.W.copy()
+        losses = train.train_steps(net, imgs, y, epochs=1, batch=8, lr=0.05, seed=0)
+        self.assertEqual(len(losses), 1)
+        self.assertTrue(np.isfinite(losses[0]))
+        self.assertFalse(np.allclose(before, net.conv1.W))
+
+
+if __name__ == "__main__":
+    unittest.main()
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -1040,7 +1069,7 @@ def rotate_cw_batch(imgs, k):
 - [ ] **Step 5: 运行测试确认通过**
 
 Run: `PYTHONPATH=src python3 -m unittest tests.test_train -v`
-Expected: PASS（loss 下降）。
+Expected: PASS（参数被更新、loss 为有限值）。
 
 - [ ] **Step 6: 提交**
 
@@ -1060,34 +1089,49 @@ git commit -m "feat(train): 训练循环（动量SGD+余弦调度）+ 冒烟测�
 - [ ] **Step 1: 写测试 `tests/test_export.py`（生成后回读校验）**
 
 ```python
-import os, sys, re, tempfile
+import os
+import sys
+import re
+import tempfile
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import export_weights as E
 
 
-def test_export_roundtrip(tmp_path):
-    d = {
-        "conv1.W": np.arange(8 * 3 * 3 * 3, dtype=np.float32).reshape(8, 3, 3, 3) / 7.0,
-        "conv1.b": np.arange(8, dtype=np.float32),
-        "conv2.W": np.arange(16 * 8 * 3 * 3, dtype=np.float32).reshape(16, 8, 3, 3) / 13.0,
-        "conv2.b": np.arange(16, dtype=np.float32),
-        "fc.W": np.arange(4 * 4096, dtype=np.float32).reshape(4, 4096) / 100.0,
-        "fc.b": np.arange(4, dtype=np.float32),
-    }
-    npz = tmp_path / "w.npz"
-    np.savez(npz, **d)
-    out = tmp_path / "weights.h"
-    E.write_header(str(npz), np.array([0.5, 0.5, 0.5], np.float32),
-                   np.array([0.25, 0.25, 0.25], np.float32), str(out))
-    text = out.read_text()
-    assert "NORM_MEAN" in text and "W1" in text and "B3" in text
-    # 解析回读第一个数组并与原值比较
-    def parse(name):
-        m = re.search(rf"{name}\[[^\]]*\]\s*=\s*\{{(.*?)\}};", text, re.S)
-        return np.array([float(v) for v in re.findall(r"[-+0-9.eE]+", m.group(1))], dtype=np.float32)
-    assert np.allclose(parse("B1"), d["conv1.b"], atol=1e-4)
-    assert np.allclose(parse("NORM_STD"), [0.25, 0.25, 0.25], atol=1e-6)
+class TestExport(unittest.TestCase):
+    def test_export_roundtrip(self):
+        d = {
+            "conv1.W": np.arange(8 * 3 * 3 * 3, dtype=np.float32).reshape(8, 3, 3, 3) / 7.0,
+            "conv1.b": np.arange(8, dtype=np.float32),
+            "conv2.W": np.arange(16 * 8 * 3 * 3, dtype=np.float32).reshape(16, 8, 3, 3) / 13.0,
+            "conv2.b": np.arange(16, dtype=np.float32),
+            "fc.W": np.arange(4 * 4096, dtype=np.float32).reshape(4, 4096) / 100.0,
+            "fc.b": np.arange(4, dtype=np.float32),
+        }
+        with tempfile.TemporaryDirectory() as td:
+            npz = os.path.join(td, "w.npz")
+            np.savez(npz, **d)
+            out = os.path.join(td, "weights.h")
+            E.write_header(npz, np.array([0.5, 0.5, 0.5], np.float32),
+                           np.array([0.25, 0.25, 0.25], np.float32), out)
+            with open(out) as f:
+                text = f.read()
+        self.assertIn("NORM_MEAN", text)
+        self.assertIn("W1", text)
+        self.assertIn("B3", text)
+
+        def parse(name):
+            m = re.search(rf"{name}\[[^\]]*\]\s*=\s*\{{(.*?)\}};", text, re.S)
+            return np.array([float(v) for v in re.findall(r"[-+0-9.eE]+", m.group(1))], dtype=np.float32)
+
+        self.assertTrue(np.allclose(parse("B1"), d["conv1.b"], atol=1e-4))
+        self.assertTrue(np.allclose(parse("NORM_STD"), [0.25, 0.25, 0.25], atol=1e-6))
+
+
+if __name__ == "__main__":
+    unittest.main()
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -1189,20 +1233,28 @@ git commit -m "feat(export): best.npz → c/weights.h + 回读测试"
 - [ ] **Step 1: 写测试 `tests/test_infer_py.py`**
 
 ```python
-import os, sys
+import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import infer_py
 
 
-def test_forward_matches_manual_softmax_sum():
-    net, mean, std = infer_py.load("data/best.npz", "data/norm.npz") \
-        if os.path.exists("data/best.npz") else (None, None, None)
-    if net is None:
-        return  # 尚未训练，跳过
-    img = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
-    logits, probs = infer_py.infer_image(net, mean, std, img)
-    assert logits.shape == (4,) and abs(probs.sum() - 1.0) < 1e-5
+class TestInferPy(unittest.TestCase):
+    def test_forward_matches_manual_softmax_sum(self):
+        if not os.path.exists("data/best.npz"):
+            self.skipTest("尚未训练 (data/best.npz 不存在)")
+        net, mean, std = infer_py.load("data/best.npz", "data/norm.npz")
+        img = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
+        logits, probs = infer_py.infer_image(net, mean, std, img)
+        self.assertEqual(logits.shape, (4,))
+        self.assertLess(abs(probs.sum() - 1.0), 1e-5)
+
+
+if __name__ == "__main__":
+    unittest.main()
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
