@@ -43,7 +43,7 @@
 - **推理零依赖**：没有 PyTorch、没有 ONNX、没有运行时。权重是一个 C 数组，`make` 完就能跑。
 - **训练全透明**：卷积、池化、Softmax 交叉熵、反向传播、动量 SGD + 余弦退火全部手写，每层都有数值梯度校验。
 - **标签免费**：把任意正常照片随机旋转 0/90/180/270°，旋转角就是标签——不需要任何人工标注。
-- **有教学**：`docs/TUTORIAL.md` 用 13 章从“图像即张量”一路讲到“C 端部署与数值对拍”。
+- **有教学**：[图解版](docs/tutorial.html)（单文件离线，21 张图表）与 [Markdown 版](docs/TUTORIAL.md) 用 13 章从“图像即张量”一路讲到“C 端部署与数值对拍”。
 - **可验证**：numpy 与 C 的前向 logits 做数值对拍（阈值 1e-4），21 个单元测试全绿。
 - **快且省**：单核 ≈ 5 ms/张、内存 < 4 MB、二进制 ≈ 291 KiB。
 - **17,780 参数 / 约 69 KB**：小巧到能一眼看懂整个数据流。
@@ -88,7 +88,8 @@ make -C c whereisup
 src/    训练与导出（Python3 + numpy，零框架）
 c/      纯 C 推理（gcc + 随仓库附带的 stb 单头库，权重在 weights.h）
 scripts/ 下载 / 预处理 / 对拍
-docs/TUTORIAL.md   从零教学（13 章）
+docs/TUTORIAL.md     从零教学（13 章，Markdown）
+docs/tutorial.html   图解版教学（单文件离线，21 张内联 SVG 图）
 ```
 
 ## 测试
