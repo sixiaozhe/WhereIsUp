@@ -58,6 +58,28 @@ class TestData(unittest.TestCase):
             self.assertEqual(y.shape, (3,))
             self.assertTrue(set(np.unique(y)).issubset({0, 1, 2, 3}))
 
+    def test_up_cue_detects_bright_top(self):
+        imgs = np.zeros((2, 64, 64, 3), dtype=np.uint8)
+        imgs[0, :16] = 200   # 顶部亮
+        imgs[1, -16:] = 200  # 底部亮
+        cue = D.up_cue(imgs)
+        self.assertGreater(cue[0], 100)
+        self.assertLess(cue[1], -100)
+
+    def test_curate_ids_filters_by_cue(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            bright = np.zeros((64, 64, 3), np.uint8)
+            bright[:16] = 200
+            flat = np.zeros((64, 64, 3), np.uint8)
+            flat[-16:] = 200
+            for name, img in [("0000", bright), ("0001", flat)]:
+                with open(os.path.join(td, f"{name}.ppm"), "wb") as f:
+                    f.write(b"P6\n64 64\n255\n")
+                    f.write(img.tobytes())
+            kept = D.curate_ids(["0000", "0001"], min_cue=50.0, ppm_dir=td)
+            self.assertEqual(kept, ["0000"])
+
     def test_augment_label_matches_rotation(self):
         rng = np.random.default_rng(1)
         imgs = np.random.randint(0, 255, size=(8, 64, 64, 3), dtype=np.uint8)

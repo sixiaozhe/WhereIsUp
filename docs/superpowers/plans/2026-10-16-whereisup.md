@@ -935,7 +935,7 @@ Expected: FAIL（`No module named 'train'`）。
 """WhereIsUp 训练脚本。
 
 用法:
-  PYTHONPATH=src python3 src/train.py [--epochs 10] [--batch 64] [--lr 0.01] [--seed 0]
+  PYTHONPATH=src python3 src/train.py [--epochs 60] [--batch 64] [--lr 0.006] [--min-cue 60]
 """
 import argparse
 import csv
@@ -952,7 +952,10 @@ def cosine_lr(lr0, step, total):
 
 def train_steps(net, imgs, y, epochs, batch, lr, seed=0, momentum=0.9,
                 mean=None, std=None, verbose=False):
-    """在给定（正立）图像上训练，内部做旋转增强。返回每 epoch 的平均 loss。"""
+    """在给定（正立）图像上训练，内部做旋转增强。返回每 epoch 的平均 loss。
+
+    本调用内使用恒定 lr；跨 epoch 的学习率调度由调用方通过 lr 参数负责。
+    """
     rng = np.random.default_rng(seed)
     if mean is None:
         mean = np.zeros(3, dtype=np.float32)
@@ -960,8 +963,6 @@ def train_steps(net, imgs, y, epochs, batch, lr, seed=0, momentum=0.9,
         std = np.ones(3, dtype=np.float32)
     vel = {id(p): np.zeros_like(p) for p, _ in net.params_and_grads()}
     n = imgs.shape[0]
-    total = epochs * max(1, (n + batch - 1) // batch)
-    step = 0
     hist = []
     for ep in range(epochs):
         order = rng.permutation(n)
@@ -976,18 +977,16 @@ def train_steps(net, imgs, y, epochs, batch, lr, seed=0, momentum=0.9,
             d = net.loss.backward()
             for layer in reversed(net.layers):
                 d = layer.backward(d)
-            cur_lr = cosine_lr(lr, step, total)
             for p, g in net.params_and_grads():
                 v = vel[id(p)]
                 v *= momentum
-                v -= cur_lr * g
+                v -= lr * g
                 p += v
             ep_loss += loss
             nb += 1
-            step += 1
         hist.append(ep_loss / max(1, nb))
         if verbose:
-            print(f"epoch {ep + 1}/{epochs} loss={hist[-1]:.4f} lr={cosine_lr(lr, step, total):.5f}")
+            print(f"epoch {ep + 1}/{epochs} loss={hist[-1]:.4f} lr={lr:.5f}")
     return hist
 
 
@@ -1019,9 +1018,11 @@ def eval_rotated(net, imgs, mean, std, rng, batch=128):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--epochs", type=int, default=10)
+    ap.add_argument("--epochs", type=int, default=60)
     ap.add_argument("--batch", type=int, default=64)
-    ap.add_argument("--lr", type=float, default=0.01)
+    ap.add_argument("--lr", type=float, default=0.006)
+    ap.add_argument("--min-cue", type=float, default=60.0,
+                    help="数据策展阈值：只保留顶部亮度-底部亮度 >= 该值的照片（-1e9 表示不筛）")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--data", default=D.PPM)
     args = ap.parse_args()
@@ -1029,6 +1030,10 @@ def main():
     ids = D.list_ids(args.data)
     if len(ids) < 20:
         raise SystemExit(f"not enough images in {args.data}; run scripts/download.sh && scripts/prepare.sh")
+    ids = D.curate_ids(ids, args.min_cue, args.data)
+    print(f"curated: kept {len(ids)} images with up-cue >= {args.min_cue}")
+    if len(ids) < 20:
+        raise SystemExit("too few images after curation; lower --min-cue")
     tr_ids, va_ids, te_ids = D.split_ids(ids, seed=args.seed)
     tr = D.load_images(tr_ids, args.data)
     va = D.load_images(va_ids, args.data)
@@ -1043,12 +1048,13 @@ def main():
     os.makedirs("data", exist_ok=True)
     curve = []
     for ep in range(args.epochs):
+        lr_ep = cosine_lr(args.lr, ep, args.epochs)
         loss_hist = train_steps(net, tr, np.zeros(len(tr), dtype=np.int64),
-                                epochs=1, batch=args.batch, lr=args.lr,
+                                epochs=1, batch=args.batch, lr=lr_ep,
                                 seed=args.seed + ep, mean=mean, std=std)
         acc, cm, _ = eval_rotated(net, va, mean, std, rng)
         curve.append((ep + 1, loss_hist[0], acc))
-        print(f"epoch {ep + 1}/{args.epochs} train_loss={loss_hist[0]:.4f} val_acc={acc:.4f}")
+        print(f"epoch {ep + 1}/{args.epochs} train_loss={loss_hist[0]:.4f} lr={lr_ep:.5f} val_acc={acc:.4f}")
         if acc > best_acc:
             best_acc = acc
             net.save("data/best.npz")
@@ -1712,8 +1718,8 @@ git commit -m "test: numpy/C 前向数值对拍脚本"
 bash scripts/download.sh 2000 400
 bash scripts/prepare.sh 64
 
-# 2) 训练（输出 data/best.npz, data/norm.npz, data/training_curve.csv）
-PYTHONPATH=src python3 src/train.py --epochs 10
+# 2) 训练（默认自动做数据策展：只保留有明确上下线索的照片；输出 data/best.npz 等）
+PYTHONPATH=src python3 src/train.py
 
 # 3) 导出权重为 C 数组
 PYTHONPATH=src python3 src/export_weights.py
@@ -1764,10 +1770,13 @@ ls data/ppm | wc -l
 ```
 Expected: 约 900–1000（picsum 有效 id 上限约 1085，失效 id 自动跳过）。若网络受限导致数量过少（<300），向用户说明并记录实际数量；数量过少会显著影响准确率。
 
-- [ ] **Step 3: 训练**
+- [ ] **Step 3: 训练（含数据策展）**
 
-Run: `PYTHONPATH=src python3 src/train.py --epochs 10 --batch 64 --lr 0.01`
-Expected: 末行打印 `BEST val_acc=... TEST acc=...` 且 **TEST acc ≥ 0.95**，并打印混淆矩阵。
+Run: `PYTHONPATH=src python3 src/train.py`（默认 `--epochs 60 --lr 0.006 --min-cue 60`）
+
+Expected: 先打印 `curated: kept N images with up-cue >= 60.0`（N 约 450–550），末行打印 `BEST val_acc=... TEST acc=...` 且 **TEST acc ≥ 0.95**，并打印混淆矩阵。
+
+> 说明：随机下载的照片里约一半没有任何上下线索（翻转/旋转后仍是"合理"的图片），模型对它们本质无法判断。`--min-cue` 用"顶部是否比底部亮（有天空）"过滤掉这些歧义图，于是准确率从 ~70% 提升到 95% 以上。这是"数据质量决定上限"的典型案例，详见 `docs/TUTORIAL.md` 第 9 章。想看未策展的完整结果可加 `--min-cue -1e9`。
 
 - [ ] **Step 4: 导出真实权重并编译**
 

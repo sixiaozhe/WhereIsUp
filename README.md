@@ -10,8 +10,8 @@
 bash scripts/download.sh 2000 400
 bash scripts/prepare.sh 64
 
-# 2) 训练（输出 data/best.npz, data/norm.npz, data/training_curve.csv）
-PYTHONPATH=src python3 src/train.py --epochs 10
+# 2) 训练（默认自动做数据策展：只保留有明确上下线索的照片；输出 data/best.npz 等）
+PYTHONPATH=src python3 src/train.py
 
 # 3) 导出权重为 C 数组
 PYTHONPATH=src python3 src/export_weights.py

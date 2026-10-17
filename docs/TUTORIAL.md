@@ -454,11 +454,11 @@ $\mu$ 通常取 0.9。动量让方向一致的分量累积、来回震荡的分�
 for p, g in net.params_and_grads():
     v = vel[id(p)]
     v *= momentum          # v = μ v
-    v -= cur_lr * g        # v = μ v - η g
+    v -= lr * g            # v = μ v - η g
     p += v                 # p += v
 ```
 
-速度用参数的 `id` 索引（`src/train.py:27` 的 `vel` 字典）。
+速度用参数的 `id` 索引（`src/train.py` 里的 `vel` 字典）。
 
 ### 7.2 学习率与余弦调度
 
@@ -468,14 +468,14 @@ for p, g in net.params_and_grads():
 
 $$\eta(t) = \eta_0 \cdot \tfrac12\left(1 + \cos\!\left(\pi \cdot \frac{t}{T}\right)\right)$$
 
-$t$ 是当前 step，$T$ 是总 step 数。$t=0$ 时 $\eta=\eta_0$，$t=T$ 时 $\eta\to0$，中间平滑下降。
+$t$ 是当前 epoch，$T$ 是总 epoch 数。$t=0$ 时 $\eta=\eta_0$，$t=T$ 时 $\eta\to0$，中间平滑下降。注意调度是**跨 epoch** 计算的（`main` 里每个 epoch 用 `cosine_lr` 算出一个 `lr_ep` 再传给 `train_steps`），因此在单个 epoch 内部学习率是恒定的；这样总步数 $T$ 才是"整个训练"而不是"一个 epoch"，否则学习率会每个 epoch 都跌到 0 又重启，浪费训练。
 
-> **建议实验**：把学习率改成 `0.001` 和 `0.1` 各训一遍，对比 `data/training_curve.csv` 里的 `train_loss` 曲线：
+> **建议实验**：把学习率改成 `0.001` 和 `0.05` 各训一遍，对比 `data/training_curve.csv` 里的 `train_loss` 曲线：
 > ```bash
-> PYTHONPATH=src python3 src/train.py --epochs 10 --lr 0.001
-> PYTHONPATH=src python3 src/train.py --epochs 10 --lr 0.1
+> PYTHONPATH=src python3 src/train.py --epochs 60 --lr 0.001
+> PYTHONPATH=src python3 src/train.py --epochs 60 --lr 0.05
 > ```
-> 典型现象：`0.001` 下降过慢、10 个 epoch 还没收敛；`0.1` 前期可能震荡或发散。这会让你直观感受学习率为何是第一超参。
+> 典型现象：`0.001` 收敛很慢；`0.05` 太大时会**发散**——本模型在 `lr≈0.01` 以上就会出现 loss 先降后升、然后卡住的现象。这会让你直观感受学习率为何是第一超参。
 
 ---
 
@@ -496,8 +496,7 @@ loss, _ = net.loss.forward(logits, labels)
 d = net.loss.backward()
 for layer in reversed(net.layers):
     d = layer.backward(d)                 # 反向传播
-cur_lr = cosine_lr(lr, step, total)       # 当前学习率
-# 动量更新参数……
+# 动量更新参数（学习率 lr 由调用方按 epoch 传入，epoch 内恒定）
 ```
 
 注意 `train_steps` 的 `y` 参数其实没被使用：**标签完全来自 `D.augment` 内部产生的旋转角**（`src/train.py:38`）。这是自标注的核心。
@@ -514,15 +513,18 @@ cur_lr = cosine_lr(lr, step, total)       # 当前学习率
 
 ### 8.3 如何读 `training_curve.csv`
 
-文件长这样（表头 + 每 epoch 一行）：
+文件长这样（表头 + 每 epoch 一行，下面是策展后一次真实训练的节选）：
 
 ```
 epoch,train_loss,val_acc
-1,3.3592,0.375
-2,12.7452,0.25
+1,2.5780,0.6755
+2,0.5185,0.9149
+10,0.0927,0.9787
+30,0.0770,0.9840
+60,0.0616,0.9840
 ```
 
-健康的训练应当是 `train_loss` 总体下降、`val_acc` 总体上升。若 `train_loss` 下降而 `val_acc` 停滞或下降，多半是过拟合（第 9 章）。当前仓库里的这份曲线来自一次只有约 20 张图的小规模跑通测试，数值本身没有参考意义，只用于验证整条链路能跑。
+健康的训练应当是 `train_loss` 总体下降、`val_acc` 总体上升。若 `train_loss` 下降而 `val_acc` 停滞或下降，多半是过拟合（第 9 章）；若两者都下不去，则是欠拟合（模型太小/训练不足/学习率不合适）。这份曲线对应的验证集只有 47 张图，因此 `val_acc` 会以 1/47≈0.021 为台阶跳动。
 
 ---
 
@@ -558,6 +560,23 @@ img = rotate_cw(img, k)
 $$p \leftarrow p - \eta\,(g + \lambda p)$$
 
 在 `train_steps` 的更新循环里把 `v -= cur_lr * g` 换成 `v -= cur_lr * (g + wd * p)` 即可。可以试着加 `wd=1e-4` 观察验证曲线是否更平滑。
+
+### 9.3 数据策展：数据质量决定上限（本项目最重要的实践）
+
+比任何正则化都有效的一步是**先把无法判断的样本剔除**。旋转任务里，随机照片中约一半根本没有上下线索（特写、俯拍、纹理、抽象图），把它们旋转 90° 后依然"看起来合理"。模型对这类图无法做出正确判断——这不是模型不够大，而是**信息本身不在图片里**。
+
+一个简单可解释的线索是"天空在上"：正立照片顶部通常比底部更亮。`src/data.py` 的 `up_cue` 用「顶部 16 行平均亮度 − 底部 16 行平均亮度」度量它，`curate_ids` 据此过滤（由 `train.py --min-cue` 控制，默认 60）。
+
+实测（同一模型、同一训练流程，验证/测试集每张源图都按 4 个方向评估、要求全对）：
+
+| 数据 | 4 路全对率 |
+|---|---|
+| 全部 993 张 | ≈ 0.70 |
+| 按线索强度分档：最弱 25% | 0.12 |
+| 最强 25% | 0.92 |
+| 策展后（cue ≥ 60，469 张） | **val 0.98 / test 0.97** |
+
+结论：**数据质量与标注的可判别性，往往比模型容量更决定上限**。先问"这条信息在输入里到底有没有"，再考虑加深网络。想复现未策展结果：`--min-cue -1e9`。
 
 > 其余正则化（Dropout、早停、减小模型）不在本项目实现，但都值得了解。
 

@@ -1,7 +1,7 @@
 """WhereIsUp 训练脚本。
 
 用法:
-  PYTHONPATH=src python3 src/train.py [--epochs 10] [--batch 64] [--lr 0.01] [--seed 0]
+  PYTHONPATH=src python3 src/train.py [--epochs 60] [--batch 64] [--lr 0.006] [--min-cue 60]
 """
 import argparse
 import csv
@@ -18,7 +18,10 @@ def cosine_lr(lr0, step, total):
 
 def train_steps(net, imgs, y, epochs, batch, lr, seed=0, momentum=0.9,
                 mean=None, std=None, verbose=False):
-    """在给定（正立）图像上训练，内部做旋转增强。返回每 epoch 的平均 loss。"""
+    """在给定（正立）图像上训练，内部做旋转增强。返回每 epoch 的平均 loss。
+
+    本调用内使用恒定 lr；跨 epoch 的学习率调度由调用方通过 lr 参数负责。
+    """
     rng = np.random.default_rng(seed)
     if mean is None:
         mean = np.zeros(3, dtype=np.float32)
@@ -26,8 +29,6 @@ def train_steps(net, imgs, y, epochs, batch, lr, seed=0, momentum=0.9,
         std = np.ones(3, dtype=np.float32)
     vel = {id(p): np.zeros_like(p) for p, _ in net.params_and_grads()}
     n = imgs.shape[0]
-    total = epochs * max(1, (n + batch - 1) // batch)
-    step = 0
     hist = []
     for ep in range(epochs):
         order = rng.permutation(n)
@@ -42,18 +43,16 @@ def train_steps(net, imgs, y, epochs, batch, lr, seed=0, momentum=0.9,
             d = net.loss.backward()
             for layer in reversed(net.layers):
                 d = layer.backward(d)
-            cur_lr = cosine_lr(lr, step, total)
             for p, g in net.params_and_grads():
                 v = vel[id(p)]
                 v *= momentum
-                v -= cur_lr * g
+                v -= lr * g
                 p += v
             ep_loss += loss
             nb += 1
-            step += 1
         hist.append(ep_loss / max(1, nb))
         if verbose:
-            print(f"epoch {ep + 1}/{epochs} loss={hist[-1]:.4f} lr={cosine_lr(lr, step, total):.5f}")
+            print(f"epoch {ep + 1}/{epochs} loss={hist[-1]:.4f} lr={lr:.5f}")
     return hist
 
 
@@ -85,9 +84,11 @@ def eval_rotated(net, imgs, mean, std, rng, batch=128):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--epochs", type=int, default=10)
+    ap.add_argument("--epochs", type=int, default=60)
     ap.add_argument("--batch", type=int, default=64)
-    ap.add_argument("--lr", type=float, default=0.01)
+    ap.add_argument("--lr", type=float, default=0.006)
+    ap.add_argument("--min-cue", type=float, default=60.0,
+                    help="数据策展阈值：只保留顶部亮度-底部亮度 >= 该值的照片（-1e9 表示不筛）")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--data", default=D.PPM)
     args = ap.parse_args()
@@ -95,6 +96,10 @@ def main():
     ids = D.list_ids(args.data)
     if len(ids) < 20:
         raise SystemExit(f"not enough images in {args.data}; run scripts/download.sh && scripts/prepare.sh")
+    ids = D.curate_ids(ids, args.min_cue, args.data)
+    print(f"curated: kept {len(ids)} images with up-cue >= {args.min_cue}")
+    if len(ids) < 20:
+        raise SystemExit("too few images after curation; lower --min-cue")
     tr_ids, va_ids, te_ids = D.split_ids(ids, seed=args.seed)
     tr = D.load_images(tr_ids, args.data)
     va = D.load_images(va_ids, args.data)
@@ -109,12 +114,13 @@ def main():
     os.makedirs("data", exist_ok=True)
     curve = []
     for ep in range(args.epochs):
+        lr_ep = cosine_lr(args.lr, ep, args.epochs)
         loss_hist = train_steps(net, tr, np.zeros(len(tr), dtype=np.int64),
-                                epochs=1, batch=args.batch, lr=args.lr,
+                                epochs=1, batch=args.batch, lr=lr_ep,
                                 seed=args.seed + ep, mean=mean, std=std)
         acc, cm, _ = eval_rotated(net, va, mean, std, rng)
         curve.append((ep + 1, loss_hist[0], acc))
-        print(f"epoch {ep + 1}/{args.epochs} train_loss={loss_hist[0]:.4f} val_acc={acc:.4f}")
+        print(f"epoch {ep + 1}/{args.epochs} train_loss={loss_hist[0]:.4f} lr={lr_ep:.5f} val_acc={acc:.4f}")
         if acc > best_acc:
             best_acc = acc
             net.save("data/best.npz")

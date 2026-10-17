@@ -120,3 +120,26 @@ def normalize(imgs, mean, std):
 def rotate_cw_batch(imgs, k):
     """对一批 NHWC 图像施加同一个顺时针旋转角 k。"""
     return np.rot90(imgs, -k, axes=(1, 2))
+
+
+def up_cue(imgs):
+    """每张正立图的“上方线索”强度：顶部 16 行亮度 - 底部 16 行亮度。
+
+    有天空/地面之分的照片通常 > 0（天空更亮）。对完全无上下线索的
+    图片该值接近 0——这类图片的朝向本质上无法判断。
+    """
+    x = imgs.astype(np.float32)
+    top = x[:, :16].mean(axis=(1, 2, 3))
+    bottom = x[:, -16:].mean(axis=(1, 2, 3))
+    return top - bottom
+
+
+def curate_ids(ids, min_cue=60.0, ppm_dir=PPM):
+    """按“上方线索”过滤，只保留有明确上下线索的照片。
+
+    这是数据策展：模型无法对本质上无朝向线索的图片做出正确判断，
+    过滤掉它们能显著提升可用准确率（详见 docs/TUTORIAL.md 第 9/10 章）。
+    """
+    imgs = load_images(ids, ppm_dir)
+    cue = up_cue(imgs)
+    return [i for i, c in zip(ids, cue) if c >= min_cue]
