@@ -7,6 +7,7 @@
 ![NumPy](https://img.shields.io/badge/numpy-only-013243)
 ![C99](https://img.shields.io/badge/C-C99-00599C)
 ![runtime deps](https://img.shields.io/badge/runtime%20deps-none-brightgreen)
+![license](https://img.shields.io/badge/license-MIT-green)
 ![tests](https://img.shields.io/badge/tests-21%20passing-success)
 ![parity](https://img.shields.io/badge/numpy%20vs%20C-%3C1e--4-success)
 
@@ -79,4 +80,4 @@ bash scripts/check_parity.sh 8
 
 ## License
 
-未指定。欢迎在开源前补充（如 MIT）。
+[MIT](LICENSE) © 2026 sixiaozhe
