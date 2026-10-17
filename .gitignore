@@ -2,5 +2,6 @@ data/
 *.o
 c/whereisup
 c/img2ppm
+c/bench
 *.ppm
 __pycache__/

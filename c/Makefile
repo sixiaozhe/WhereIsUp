@@ -12,5 +12,8 @@ whereisup: main.c nn_inference.c imutil.c weights.h nn_inference.h imutil.h
 img2ppm: img2ppm.c imutil.c imutil.h
 	$(CC) $(CFLAGS) -o $@ img2ppm.c imutil.c $(LDLIBS)
 
+bench: bench.c nn_inference.c weights.h nn_inference.h
+	$(CC) $(CFLAGS) -o $@ bench.c nn_inference.c $(LDLIBS)
+
 clean:
-	rm -f $(TOOLS)
+	rm -f $(TOOLS) bench

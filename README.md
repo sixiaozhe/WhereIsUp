@@ -7,6 +7,7 @@
 ![NumPy](https://img.shields.io/badge/numpy-only-013243)
 ![C99](https://img.shields.io/badge/C-C99-00599C)
 ![runtime deps](https://img.shields.io/badge/runtime%20deps-none-brightgreen)
+![inference](https://img.shields.io/badge/inference-~5%20ms%20%7C%203%20MB-lightgrey)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![tests](https://img.shields.io/badge/tests-21%20passing-success)
 ![parity](https://img.shields.io/badge/numpy%20vs%20C-%3C1e--4-success)
@@ -19,6 +20,24 @@
         （纯 C 前向，权重是编译进程序的 C 数组）
 ```
 
+## 推理开销（实测）
+
+单核、纯 CPU、无 GPU / 无 BLAS / 无框架，权重是编译进二进制的 `static const` 数组：
+
+| 项目 | 实测 |
+|---|---|
+| 参数量 | **17,780**（float32 ≈ 69 KiB） |
+| 可执行文件 | **≈ 291 KiB**（含权重与 stb 解码器，全部编译进二进制，无外部模型文件） |
+| 常驻内存 RSS | **≈ 2.0 MB**（纯前向）/ **≈ 2.7 MB**（PPM 全流程）/ **≈ 3.4 MB**（400×400 JPEG） |
+| 纯前向 | **≈ 0.95 ms / 次** |
+| 四方向 TTA | **≈ 3.8 ms**（= 4 次前向） |
+| CLI 端到端（PPM） | **≈ 5.0 ms**（TTA）/ **≈ 1.8 ms**（`--no-tta`） |
+| CLI 端到端（400×400 JPEG） | **≈ 7.0 ms** |
+| 单核吞吐 | **≈ 200 张/秒**（TTA）/ **≈ 557 张/秒**（`--no-tta`） |
+
+> 测量环境：12th Gen Intel Core i3-12100F（单核）、Linux/WSL2、`gcc -O3`；CLI 为 300+ 次调用的平均值。
+> 复现：`make -C c bench && ./c/bench`（纯前向与内存），CLI 计时见上表方法。
+
 ## 为什么值得一看
 
 - **推理零依赖**：没有 PyTorch、没有 ONNX、没有运行时。权重是一个 C 数组，`make` 完就能跑。
@@ -26,6 +45,7 @@
 - **标签免费**：把任意正常照片随机旋转 0/90/180/270°，旋转角就是标签——不需要任何人工标注。
 - **有教学**：`docs/TUTORIAL.md` 用 13 章从“图像即张量”一路讲到“C 端部署与数值对拍”。
 - **可验证**：numpy 与 C 的前向 logits 做数值对拍（阈值 1e-4），21 个单元测试全绿。
+- **快且省**：单核 ≈ 5 ms/张、内存 < 4 MB、二进制 ≈ 291 KiB。
 - **17,780 参数 / 约 69 KB**：小巧到能一眼看懂整个数据流。
 
 ## 快速开始
