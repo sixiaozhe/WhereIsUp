@@ -622,9 +622,9 @@ true3 [   .     .     .   ... ]
 ```c
 static const float NORM_MEAN[3] = {...};
 static const float NORM_STD[3]  = {...};
-static const float W1[224]  = {...};   /* conv1 权重 */
+static const float W1[216]  = {...};   /* conv1 权重 8×3×3×3 */
 static const float B1[8]    = {...};   /* conv1 偏置 */
-static const float W2[1168] = {...};   /* conv2 权重 */
+static const float W2[1152] = {...};   /* conv2 权重 16×8×3×3 */
 static const float B2[16]   = {...};   /* conv2 偏置 */
 static const float W3[16384] = {...};  /* fc 权重 */
 static const float B3[4]    = {...};   /* fc 偏置 */

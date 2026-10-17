@@ -78,6 +78,28 @@
   .tip{border-color:var(--green); background:var(--green-soft)}
   .key{border-color:var(--purple); background:#f5f3ff}
   .note .t,.warn .t,.tip .t,.key .t{font-weight:700; display:block; margin-bottom:2px}
+  /* ---------- 五段式深讲 ---------- */
+  .block{border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:10px; padding:12px 16px 14px; margin:16px 0; background:#fff}
+  .b-intuition{border-left-color:#2563eb; background:#f7fbff}
+  .b-handcalc{border-left-color:#d97706; background:#fffdf6}
+  .b-derive{border-left-color:#7c3aed; background:#fbfaff}
+  .b-pitfall{border-left-color:#dc2626; background:#fff8f8}
+  .b-quiz{border-left-color:#059669; background:#f6fefb}
+  .block .tag{display:inline-block; font-size:12px; font-weight:700; padding:1px 9px; border-radius:6px; margin-bottom:6px}
+  .b-intuition .tag{background:#dbeafe; color:#1d4ed8}
+  .b-handcalc .tag{background:#fef3c7; color:#b45309}
+  .b-derive .tag{background:#ede9fe; color:#6d28d9}
+  .b-pitfall .tag{background:#fee2e2; color:#b91c1c}
+  .b-quiz .tag{background:#d1fae5; color:#047857}
+  .block p:first-of-type{margin-top:2px}
+  details.ans{margin:10px 0 0; border-top:1px dashed var(--line); padding-top:8px}
+  details.ans summary{cursor:pointer; color:var(--accent); font-size:13.5px; font-weight:600; outline:none}
+  details.ans[open] summary{margin-bottom:6px}
+  .steps{counter-reset:st; list-style:none; padding:0; margin:8px 0}
+  .steps>li{counter-increment:st; position:relative; padding-left:34px; margin:8px 0}
+  .steps>li::before{content:counter(st); position:absolute; left:0; top:0; width:22px; height:22px; border-radius:50%; background:var(--accent-soft); color:var(--accent); font-weight:700; font-size:12px; text-align:center; line-height:22px}
+  .calc{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:#fff; border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:8px 0; font-size:13.5px; line-height:1.7; overflow:auto}
+  .calc b{color:#b45309}
   /* ---------- 表格 ---------- */
   table{border-collapse:collapse; width:100%; margin:18px 0; font-size:14px}
   th,td{border:1px solid var(--line); padding:8px 11px; text-align:left; vertical-align:top}
@@ -236,6 +258,50 @@
 <h3>1.2 标签为什么是免费的</h3>
 <p>picsum.photos 上的原图都被视为“正立”。训练时随机抽一个 <code>k</code>，把照片转 <code>k·90°</code>，<strong>旋转角本身就是标签</strong>。不用人工标注，同一张源图每个 epoch 还能以不同类别出现——数据量凭空 ×4。</p>
 <div class="key"><span class="t">核心思想</span>把“无标签图片”变成一个可以无限生成带标签样本的自监督任务，这正是这个项目适合教学的原因。</div>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>想象桌上一张印着风景的纸。你不看内容，只问：“如果它本来是正的，那现在‘正上方’这个方向指到了桌子的哪一边？” 纸可以正放、转到右、倒放、转到左，答案只有四种——这就是 0/1/2/3 四分类。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>用一张 2×2 的小图，约定 <code>[0,0]</code> 是左上角。给它标一个“上边标记”（第 0 行）：</p>
+  <div class="calc">
+原图 A（k=0）：<br>
+&nbsp;&nbsp;行0: <b>↑A</b> <b>↑A</b>　（“上”在第 0 行）<br>
+&nbsp;&nbsp;行1: &nbsp;&nbsp;.&nbsp;&nbsp;&nbsp;&nbsp;.<br>
+顺时针转 1 次（k=1）：<br>
+&nbsp;&nbsp;行0: &nbsp;&nbsp;.&nbsp;&nbsp;&nbsp;&nbsp;<b>↑A</b>　（“上”跑到右边一列）<br>
+&nbsp;&nbsp;行1: &nbsp;&nbsp;.&nbsp;&nbsp;&nbsp;&nbsp;<b>↑A</b><br>
+  </div>
+  <p>对照 §1.1 的表：k=1 时“上”在<strong>右</strong>。再把 k=1 的图逆时针转 90°（<code>correct</code>），应还原成 A：</p>
+  <div class="calc">np.rot90(rotate_cw(A, k), k, axes=(0,1)) == A　对 k=0,1,2,3 都成立 ✓</div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>为什么 <code>rotate_cw</code> 写成 <code>np.rot90(img, -k)</code>？因为 <code>np.rot90</code> 的正角度是<strong>逆时针</strong>。要“顺时针转 k 次”，就得传 <code>-k</code>；纠正时反过来要<strong>逆时针</strong>，所以 <code>correct</code> 用 <code>np.rot90(img, k)</code>。两者互为逆，所以对任意 k 有：</p>
+  <p class="formula">correct(rotate_cw(I, k), k) = I</p>
+  <p>这正是 <code>tests/test_data.py</code> 里 <code>test_correct_undoes_rotation</code> 断言的东西——<strong>方向约定用测试锁死</strong>，后续所有代码都依赖它。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>把方位记反</strong>：k=1 是“上边在右”，不是“上边在左”。画个小图自己转一遍最保险。</li>
+    <li><strong>混淆 rotate 与 correct</strong>：rotate 是“制造旋转”，correct 是“消除旋转”，转的角度一样但方向相反。</li>
+    <li><strong>用顺时针描述纠正方向</strong>：纠正 k=1 是“逆时针 90°”，与“顺时针 270°”等价，别写错方向。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>一张图的类别 k=3，它的“上边”在哪侧？要把它转正，逆时针要转多少度？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>k=3 → 上边在<strong>左</strong>侧；逆时针转 <strong>270°</strong>（顺时针转 90° 也可）。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -292,6 +358,50 @@
 </figure>
 
 <div class="tip"><span class="t">迁移到别处</span>人脸识别按“人”切、语音按“说话人”切、医疗影像按“病人”切。只要一个样本能派生出多个版本，就在最外层切。</div>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>考试前老师不小心把<strong>考卷原题</strong>放进了练习册。你背下答案考了满分，但这不代表你会解题。数据泄漏也一样：测试图只要在训练集里有“同一张源图的另一个旋转版本”，模型靠记住纹理就能蒙对。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>只有两张源图 A、B，各生成 4 个旋转副本（a₀…a₃、b₀…b₃），共 8 个样本。</p>
+  <div class="calc">
+<b>错误切法（按副本随机）</b><br>
+&nbsp;&nbsp;train = a₀ a₁ a₂ b₀<br>
+&nbsp;&nbsp;test&nbsp; = a₃ b₁ b₂ b₃<br>
+测试样本 a₃ 的“同源兄弟”a₀ 在 train 里 → 模型只要能认出一“这张是 A”，<br>
+无论怎么转都能靠排除法猜对。<br><br>
+<b>正确切法（按源图）</b><br>
+&nbsp;&nbsp;train = a₀ a₁ a₂ a₃<br>
+&nbsp;&nbsp;test&nbsp; = b₀ b₁ b₂ b₃<br>
+测试集里的源图 B 从未出现在训练集 → 只能真的“看懂方向”。
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>设测试样本是某张源图 <code>s</code> 的旋转 <code>x = rot(s, k)</code>。若训练集里有 <code>s</code> 的另一个旋转 <code>rot(s, k′)</code>，一个“只记住 <code>s</code> 长什么样”的模型也能在测试时输出确定结果。于是<strong>测试准确率被记忆能力抬高，而不是被方向理解能力抬高</strong>。</p>
+  <p>所以切分单位必须是“能派生样本的最小独立单位”——这里的源图 <code>s</code>。实现就是 <code>split_ids</code>：先对源图 id 打乱、再按 8:1:1 分，同一 id 的旋转永远在一起。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>先增强再切分</strong>：在生成 4 个旋转版本之后才切，副本必然跨集合。</li>
+    <li><strong>按文件名切</strong>：若文件名已含旋转编号，等于按副本切。</li>
+    <li><strong>用验证集反复调参后又称它是“测试集”</strong>：那是验证集泄漏，测试集必须只汇报一次。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>如果把每个旋转版本都当成独立图片随机切分，训练出的模型测试准确率通常会怎样？为什么？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>会明显<strong>虚高</strong>。因为测试集里很多样本的“同源旋转版本”出现在训练集里，模型靠记忆源图纹理即可答对，测到的不是方向理解能力。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -360,6 +470,48 @@
 </svg>
 <figcaption><b>图 3.2</b> 均值/标准差只在<strong>训练集</strong>上统计，随权重一起导出给 C 端——否则就是“偷看”测试集分布。</figcaption>
 </figure>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>对电脑来说，彩色图片就是<strong>三个数字矩阵叠在一起</strong>：一层红、一层绿、一层蓝，每个格子的数字是 0–255 的亮度。所谓“布局”只是同一堆数字在内存里先排谁、后排谁。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>一张 2×2 的 RGB 图，<code>H=2, W=2, C=3</code>。看某个像素的红色值（<code>y=1, x=0, c=0</code>）：</p>
+  <div class="calc">
+HWC 索引 = (y·W + x)·C + c = (1·2 + 0)·3 + 0 = <b>6</b><br>
+CHW 索引 = (c·H + y)·W + x = (0·2 + 1)·2 + 0 = <b>2</b><br><br>
+同一个数字，两种布局里的下标不同 → <b>布局错了，卷积会算出一堆乱码</b>。
+  </div>
+  <p>再算归一化。假设某像素 <code>128</code>，通道均值 <code>μ=0.45</code>、标准差 <code>σ=0.25</code>：</p>
+  <div class="calc">
+x′ = 128 / 255 = 0.502<br>
+x″ = (0.502 − 0.45) / 0.25 = <b>0.208</b>
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p><strong>为什么每通道单独标准化？</strong> 自然图像的 R/G/B 分布不同（比如天空图蓝色均值偏高）。共享一组统计量会让某些通道的方差被压得过小。<strong>为什么只用训练集统计？</strong> 因为验证/测试的分布信息不能提前进入模型，否则就是泄漏；训练与推理必须用<strong>同一组</strong> μ、σ，所以它们随权重一起导出给 C 端。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>忘了 /255</strong>：像素直接喂 0–255，数值过大，梯度爆炸、训练发散。</li>
+    <li><strong>uint8 直接减均值</strong>：会下溢回绕（0−1 变 255）。务必先转 <code>float32</code>。</li>
+    <li><strong>广播轴弄错</strong>：NHWC 上是 <code>(1,1,1,3)</code>，不是 <code>(1,3,1,1)</code>，否则每张图减错通道。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>像素值 <code>255</code>，通道 <code>μ=0.5、σ=0.25</code>，标准化后是多少？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>x′ = 255/255 = 1，x″ = (1 − 0.5)/0.25 = <strong>2.0</strong>。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -487,6 +639,51 @@
 <figcaption><b>图 4.3</b> im2col 把“到处滑动”变成“一次大矩阵乘法”。这是卷积前向与反向都能写得又短又快的秘密。</figcaption>
 </figure>
 
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>卷积核就是一副“小眼镜”，专门找某种局部花纹（一条横边、一块亮斑）。眼镜在图上逐格移动，<strong>哪里的花纹像它，哪里的响应就大</strong>。多个卷积核就是多副眼镜，各找一个特征。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>输入 3×3，核也是 3×3，<code>p=0, s=1</code>（恰好只有一次滑窗位置）：</p>
+  <div class="calc">
+输入 X =         核 K =<br>
+&nbsp;&nbsp;1 2 3&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1 0 1<br>
+&nbsp;&nbsp;4 5 6&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0 1 0<br>
+&nbsp;&nbsp;7 8 9&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1 0 1<br><br>
+out = 1·1 + 2·0 + 3·1<br>
+&nbsp;&nbsp;&nbsp;&nbsp;+ 4·0 + 5·1 + 6·0<br>
+&nbsp;&nbsp;&nbsp;&nbsp;+ 7·1 + 8·0 + 9·1<br>
+&nbsp;&nbsp;&nbsp;&nbsp;= 1 + 3 + 5 + 7 + 9 = <b>25</b>（b=0）
+  </div>
+  <p>输出尺寸代入公式：<code>O = (3 + 0 − 3)/1 + 1 = 1</code>，确实是 1×1。</p>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>输出尺寸公式从“窗口能放几个位置”推出来：可用边长是 <code>H + 2p</code>（上下各补 p），一个窗口长 <code>k</code>，步长 <code>s</code>，能放下的次数就是：</p>
+  <p class="formula">O = <span class="frac"><span class="num">H + 2p − k</span><span class="den">s</span></span> + 1</p>
+  <p>本项目 <code>H=64, k=3, p=1, s=1</code> → <code>O = 64</code>，所以卷积<strong>不改变分辨率</strong>。多通道时，对每个输入通道分别卷积再把结果<strong>逐位置相加</strong>，所以 3→8 的卷积核形状是 <code>[8, 3, 3, 3]</code>。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>把深度学习的“卷积”和信号处理的“卷积”混为一谈</strong>：前者其实是互相关，不翻转核；是否翻转都能学会，但前向与反向必须保持一致。</li>
+    <li><strong>忘了加偏置 b</strong>：每个输出通道一个标量偏置，常被漏掉。</li>
+    <li><strong>padding 后忘了裁回原尺寸</strong>：反向散射回 <code>H+2p</code> 的缓冲区后，要裁掉边缘的 p。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>输入 <code>32×32</code>，<code>k=3, p=1, s=1</code>，输出多大？若有 16 个卷积核，输出张量形状？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p><code>O = (32 + 2 − 3)/1 + 1 = 32</code>，输出 <strong>16×32×32</strong>（通道数 = 卷积核个数）。</p>
+  </details>
+</div>
+
 <h3 id="c4-2">4.2 ReLU：把负值清零</h3>
 <figure>
 <svg viewBox="0 0 820 240" role="img" aria-label="ReLU 曲线">
@@ -508,6 +705,45 @@
 </svg>
 <figcaption><b>图 4.4</b> ReLU 引入非线性，却极其好求导：前向记下掩码，反向乘同一个掩码即可。</figcaption>
 </figure>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>如果层与层之间只有乘加（线性），叠再多层也等价于一层。<strong>ReLU 提供的“非线性”才是网络能表达复杂模式的关键</strong>；而它又便宜到几乎免费——负数清零而已。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>一组输出 <code>[−2, 3, 0, −1, 5]</code> 过 ReLU：</p>
+  <div class="calc">
+输入 : −2&nbsp;&nbsp;3&nbsp;&nbsp;0&nbsp;&nbsp;−1&nbsp;&nbsp;5<br>
+掩码 : &nbsp;0&nbsp;&nbsp;1&nbsp;&nbsp;0&nbsp;&nbsp;&nbsp;0&nbsp;&nbsp;1&nbsp;&nbsp;(输入 &gt; 0)<br>
+输出 : &nbsp;0&nbsp;&nbsp;3&nbsp;&nbsp;0&nbsp;&nbsp;&nbsp;0&nbsp;&nbsp;5<br><br>
+反向：若回传梯度 d = [1,1,1,1,1]，则 dx = d · 掩码 = [0,1,0,0,1]。
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>ReLU 的定义是 <code>f(z) = max(0, z)</code>。分段求导：</p>
+  <p class="formula">f′(z) = <span class="frac"><span class="num">1, z &gt; 0</span><span class="den">0, z ≤ 0</span></span></p>
+  <p>链式法则下 <code>dx = dout · f′(z) = dout · mask</code>，其中 <code>mask</code> 就是前向存下的 <code>z &gt; 0</code>。因此反向不需要重算，只做一次逐元素乘法。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>掩码用输入算、却用错变量</strong>：掩码必须来自<strong>前向时的输入</strong>，反向时输入已不是原来的值。</li>
+    <li><strong>在 0 处纠结</strong>：<code>x=0</code> 时导数取 0 还是 1 都行，测度为零，不影响训练。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>前向输入 <code>[−1, 0, 1]</code>，反向回传梯度 <code>[2, 3, 4]</code>，dx 是多少？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>掩码 = [0,0,1]，所以 dx = <strong>[0, 0, 4]</strong>。</p>
+  </details>
+</div>
 
 <h3 id="c4-3">4.3 最大池化：只留最强的</h3>
 <figure>
@@ -542,8 +778,93 @@
 <figcaption><b>图 4.5</b> 池化没有可学习参数，作用有三：降分辨率、扩大感受野、带来一点平移不变性。反向靠 argmax“路由”梯度。</figcaption>
 </figure>
 
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>池化像“看大图”：不关心某个细节精确在哪，只关心<strong>这一片里最强烈的信号是什么</strong>。这样物体稍微移动几格，结果依然稳定。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>4×4 输入做 2×2、步长 2 的最大池化：</p>
+  <div class="calc">
+输入 X =                输出 Y =<br>
+&nbsp;&nbsp;1 5 | 2 3&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;5 9<br>
+&nbsp;&nbsp;3 2 | 9 1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→&nbsp;&nbsp;&nbsp;&nbsp;7 6<br>
+&nbsp;&nbsp;------+------<br>
+&nbsp;&nbsp;0 4 | 2 6<br>
+&nbsp;&nbsp;7 1 | 5 2<br><br>
+左上块 max(1,5,3,2)=5　右上块 max(2,3,9,1)=9<br>
+左下块 max(0,4,7,1)=7　右下块 max(2,6,5,2)=6<br>
+前向还要记下每块最大值的位置（argmax），供反向路由。
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>前向：<code>y = max(块内元素)</code>。反向时，只有当初取到最大值的位置对输出有贡献，所以梯度全部回传给那个位置，其余为 0：</p>
+  <p class="formula">dx<sub>i</sub> = dout · [ i == argmax ]</p>
+  <p>这也是为什么代码里前向要保存 <code>self.argmax</code>：反向靠它“路由”梯度。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>尺寸不整除</strong>：<code>H</code> 不是 2 的倍数时，多余的行/列会被丢弃。本项目每层都是偶数，所以安全。</li>
+    <li><strong>把最大池化写成平均池化</strong>：语义完全不同，平均会把强响应稀释掉。</li>
+    <li><strong>反向把梯度平均分给块内所有位置</strong>：错了，只有 argmax 位置拿梯度。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>对 <code>[[1,2],[3,4]]</code> 做 2×2 最大池化，输出与 argmax 位置？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>输出 <strong>4</strong>；argmax 在右下角（<code>y=1, x=1</code>）。</p>
+  </details>
+</div>
+
 <h3 id="c4-4">4.4 展平与全连接</h3>
 <p><code>Flatten</code> 把 <code>16×16×16</code> 的特征图按行优先拉成 4096 维向量；<code>Linear</code> 做一次仿射变换 <code>y = Wx + b</code>，把 4096 维压到 4 类分数（logits）。</p>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>卷积看到的是“哪里有什么特征”，但最终要给整张图打分。展平把空间网格摊成一长条，全连接再对每个位置的特征<strong>加权投票</strong>，汇总成四类的分数。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>一个 2×2 单通道特征图 <code>[[a,b],[c,d]]</code> 展平后是 <code>[a,b,c,d]</code>（行优先）。再过一个 4→2 的线性层：</p>
+  <div class="calc">
+W = [[w00 w01 w02 w03],&nbsp;&nbsp;b = [b0, b1]<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[w10 w11 w12 w13]]<br><br>
+logit0 = w00·a + w01·b + w02·c + w03·d + b0<br>
+logit1 = w10·a + w11·b + w12·c + w13·d + b1<br><br>
+本层参数 = 4×2（权重）+ 2（偏置）= 10 个。
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>为什么最后要全连接？卷积层输出的是“空间特征图”，位置信息还很丰富；全连接把每个位置的特征<strong>加权汇总</strong>成“对四类各打多少分”。参数计数：</p>
+  <div class="calc">fc: 16·16·16 个输入 × 4 个输出 + 4 个偏置 = 16,384 + 4 = <b>16,388</b></div>
+  <p>全模型合计 17,780 个参数，绝大部分都在这层——小模型时这很常见。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>展平顺序在 Python 与 C 不一致</strong>：必须都是行优先（H→W→C 或 C→H→W 连续），否则权重对不上，对拍才会暴露。</li>
+    <li><strong>忘记偏置</strong>：<code>y = Wx</code> 与 <code>y = Wx + b</code> 表达能力不同。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>16×16×16 的特征图展平后多长？接到 4 类，权重矩阵参数共有多少个？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>展平长度 <strong>4096</strong>；权重 <strong>4096×4 = 16,384</strong> 个，再加 4 个偏置共 16,388 个。</p>
+  </details>
+</div>
 
 <h3 id="c4-5">4.5 Softmax：分数变概率</h3>
 <figure>
@@ -575,6 +896,46 @@
 </svg>
 <figcaption><b>图 4.6</b> Softmax 把任意实数分数变成“和恒为 1”的概率。实现在 numpy 与 C 里都先减最大值，避免 <code>e^z</code> 溢出。</figcaption>
 </figure>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>logits = <code>[2, 0, −1, 0.5]</code>，先减最大值 2 得 <code>[0, −2, −3, −1.5]</code>：</p>
+  <div class="calc">
+e⁰ = 1.000&nbsp;&nbsp;&nbsp;e⁻² = 0.1353&nbsp;&nbsp;&nbsp;e⁻³ = 0.0498&nbsp;&nbsp;&nbsp;e⁻¹·⁵ = 0.2231<br>
+和 = 1.000 + 0.1353 + 0.0498 + 0.2231 = <b>1.4082</b><br><br>
+prob = [1.000, 0.1353, 0.0498, 0.2231] / 1.4082<br>
+&nbsp;&nbsp;&nbsp;&nbsp;= <b>[0.710, 0.096, 0.035, 0.158]</b>　（和 = 1）
+  </div>
+</div>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>logits 是“分数”，可以是任意实数。Softmax 把分数转成“票数分配”：分数越高的类拿到的概率越大，且所有类加起来恰好是 1。它相当于一个平滑版的 argmax。</p>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>定义 <code>p_i = e^{z_i} / Σ_j e^{z_j}</code>。分子分母同乘 <code>e^{−max(z)}</code>，结果不变：</p>
+  <p class="formula">p<sub>i</sub> = <span class="frac"><span class="num">e<sup>z<sub>i</sub> − m</sup></span><span class="den">Σ<sub>j</sub> e<sup>z<sub>j</sub> − m</sup></span></span>，　m = max z</p>
+  <p>这就是“减最大值”的数学依据：数值等价，却避免 <code>e^100</code> 直接溢出。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>把 logits 当概率用</strong>：logits 之和不必为 1，甚至可为负；只有 softmax 之后才是概率。</li>
+    <li><strong>不减最大值</strong>：数值不稳定，logits 一大就得到 <code>inf/inf=nan</code>。</li>
+    <li><strong>把 softmax 当成损失</strong>：softmax 只是输出层，误差由交叉熵度量（第 5 章）。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>如果四个 logits 完全相等，softmax 输出是什么？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>四类都是 <strong>0.25</strong>——完全无法区分，损失也最大（−log 0.25 = 1.386）。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -605,6 +966,46 @@
 </svg>
 <figcaption><b>图 5.1</b> 交叉熵对“自信却答错”惩罚极大（p 小 → 损失大），对“答对且自信”奖励为 0，且处处可导。</figcaption>
 </figure>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>交叉熵只问一句：“你把<strong>正确类别</strong>的概率估成多少？” 估得越接近 1，损失越小；估得越接近 0，损失越大。它不看其它类押了多少，因为其它类的概率会被归一化自动挤出来。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>正确类别是“上”，模型给出不同概率 p_y 时的损失：</p>
+  <div class="calc">
+p_y = 0.99 → L = −ln(0.99) = <b>0.010</b>　（很自信且对）<br>
+p_y = 0.71 → L = −ln(0.71) = <b>0.342</b>　（上一节 softmax 的例子）<br>
+p_y = 0.25 → L = −ln(0.25) = <b>1.386</b>　（等于乱猜）<br>
+p_y = 0.01 → L = −ln(0.01) = <b>4.605</b>　（很自信却错，重罚）
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>交叉熵的一般定义是 <code>L = −Σᵢ yᵢ log pᵢ</code>，其中 <code>y</code> 是 one-hot（正确类是 1，其余是 0）。于是求和里只剩正确项：</p>
+  <p class="formula">L = −1 · log p<sub>y</sub> − Σ<sub>i≠y</sub> 0 · log p<sub>i</sub> = −log p<sub>y</sub></p>
+  <p>它等价于“模型分布 q 与真实分布 p 的 KL 散度 + 常数”，所以最小化交叉熵就是让模型分布逼近真实分布。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>用准确率当损失</strong>：准确率是“对/错”的台阶函数，几乎处处导数为 0，梯度下降无从下手。</li>
+    <li><strong>在 p_y 上加 1e-12 后忘记它是为什么</strong>：只是防止 <code>log 0</code>，不影响正常情形。</li>
+    <li><strong>把 logits 直接送进 <code>log</code></strong>：必须先 softmax 成概率再取对数；实现里把两步合并成一个数值稳定的 <code>SoftmaxCE</code>。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>正确类概率 <code>p_y = 0.5</code> 时交叉熵是多少？它比 <code>p_y = 0.25</code> 好还是差？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>L = −ln(0.5) = <strong>0.693</strong>，比 <code>p_y=0.25</code> 的 1.386 <strong>更好</strong>（越小越好）。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -655,6 +1056,54 @@
 </svg>
 <figcaption><b>图 6.1</b> 反向传播像把误差沿计算图“逆流”。合并 softmax 与交叉熵后，这一步简化为 <code>(p − onehot)/N</code>。逐层实现见 <a href="../src/nn.py">src/nn.py</a> 的 <code>backward</code>。</figcaption>
 </figure>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>前向是“输入 → 损失”。反向就是<strong>逐层问一句</strong>：如果我把这层的输出调大一点，损失会变大还是变小？答案是损失对它的导数（斜率）。有了斜率，就沿反方向走一小步，损失下降。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>一个最小网络：<code>x=[1,2]</code>，<code>W=[[1,0],[0,1]]</code>，<code>b=0</code>，真值类别 <code>y=1</code>，batch=1。</p>
+  <div class="calc">
+前向：logits = Wx = [1, 2]<br>
+&nbsp;&nbsp;softmax：减 max 2 → [−1, 0] → e = [0.3679, 1.0] → p = [0.269, 0.731]<br>
+&nbsp;&nbsp;损失：L = −ln(0.731) = <b>0.313</b><br><br>
+反向（softmax+CE 合并）：<br>
+&nbsp;&nbsp;dlogits = (p − onehot)/N = [0.269−0, 0.731−1] = [<b>0.269, −0.269</b>]<br>
+&nbsp;&nbsp;dW = dlogitsᵀ · x（外积）= [[0.269, 0.538], [−0.269, −0.538]]<br>
+&nbsp;&nbsp;dx = dlogits · W = [0.269, −0.269]
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>设 <code>p_j = e^{z_j} / Σ_k e^{z_k}</code>，<code>L = −log p_y</code>。分两种情况求 <code>∂L/∂z_j</code>：</p>
+  <ul class="steps">
+    <li><strong>j = y（正确类）</strong>：对 <code>log p_y</code> 求导，得 <code>∂L/∂z_y = p_y − 1</code>。</li>
+    <li><strong>j ≠ y</strong>：得 <code>∂L/∂z_j = p_j</code>（推导要点：softmax 的雅可比是 <code>p_j(δ_{jk} − p_k)</code>，求和后化简）。</li>
+  </ul>
+  <p>两式统一成一个漂亮的形式，这正是把 softmax 与交叉熵<strong>合并</strong>的价值：</p>
+  <p class="formula">∂L/∂z = p − onehot</p>
+  <p>再除以 batch 大小 N 取平均，就得到代码里的 <code>(p − onehot)/N</code>。链式法则继续往前传：<code>dx = dlogits · W</code>，<code>dW = dlogitsᵀ · xᵀ</code>。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>忘记除以 N</strong>：损失是 batch 平均，梯度也要平均，否则学习率随 batch 大小漂移。</li>
+    <li><strong>onehot 位置减错</strong>：是 <code>p − onehot</code>（正确类减 1），不是加。</li>
+    <li><strong>以为要显式写 softmax 的导数</strong>：合并后根本不需要，直接 <code>p − onehot</code>。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>某样本 <code>p = [0.7, 0.2, 0.1]</code>，真实类别是 0（对应 p=0.7）。回传到 logits 的梯度（未除 N）是多少？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p><code>p − onehot = [0.7−1, 0.2−0, 0.1−0] = [−0.3, 0.2, 0.1]</code>。正确类被往下压，错误类被往上抬。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -697,6 +1146,47 @@
 </figure>
 
 <div class="tip"><span class="t">学习率是第一超参</span>太大不收敛甚至发散，太小收敛慢。教程主线用 <code>lr=0.006</code>、60 epoch；可自行试 <code>0.001</code> 与 <code>0.05</code> 观察 <code>data/training_curve.csv</code> 的差异。</div>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>下山时，普通 SGD 只看脚下这一步的坡度，容易左右横跳。动量像给小球<strong>惯性</strong>：方向一致时越滚越快，来回震荡的分量相互抵消，于是走得更直更稳。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>假设梯度恒为 <code>g=1</code>，<code>μ=0.9</code>，<code>η=0.1</code>，从 <code>p=0, v=0</code> 出发（<code>v ← 0.9v − 0.1·1，p ← p + v</code>）：</p>
+  <div class="calc">
+步&nbsp;&nbsp;v&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;p（动量）&nbsp;&nbsp;&nbsp;p（纯 SGD）<br>
+1&nbsp;&nbsp;&nbsp;−0.100&nbsp;&nbsp;&nbsp;−0.100&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;−0.100<br>
+2&nbsp;&nbsp;&nbsp;−0.190&nbsp;&nbsp;&nbsp;−0.290&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;−0.200<br>
+3&nbsp;&nbsp;&nbsp;−0.271&nbsp;&nbsp;&nbsp;−0.561&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;−0.300<br><br>
+动量步长越来越大，趋向极限 v∞ = −ηg/(1−μ) = −1。
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>把更新展开，会发现 <code>v</code> 是历史梯度的<strong>指数滑动平均</strong>：</p>
+  <p class="formula">v<sub>t</sub> = −η (g<sub>t</sub> + μ g<sub>t−1</sub> + μ² g<sub>t−2</sub> + …)</p>
+  <p>越久远的梯度权重以 <code>μ</code> 衰减。方向恒定时各项同号叠加，有效步长最大约 <code>η/(1−μ)</code>（μ=0.9 时约 10 倍）；方向来回变时正负相消。所以动量既能加速，又能抑噪。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>学习率调度写错层级</strong>：若在每个 epoch 内部就把 lr 衰减到 0，下个 epoch 又从头开始，等于白调。本项目按<strong>整个训练</strong>做余弦（每个 epoch 一个 <code>lr_ep</code>）。</li>
+    <li><strong>lr 太大还怪动量</strong>：动量会放大有效步长，lr 要相应更小。</li>
+    <li><strong>忘了速度缓冲要按参数区分</strong>：代码用参数的 <code>id</code> 维护独立的 <code>v</code>，不能共用一个。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>若把 <code>μ</code> 设为 0，动量法退化成什么？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>退化成普通 SGD：<code>v = −ηg</code>，<code>p ← p − ηg</code>。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -738,6 +1228,49 @@
 </svg>
 <figcaption><b>图 8.1</b> 内层按 batch 训练，外层每 epoch 用验证集“比武选最优”。<code>--seeds</code> 时对多个随机种子重复此流程，再按验证集挑总冠军。</figcaption>
 </figure>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>把训练想成复习：<strong>batch</strong> 是“做一道大题”，<strong>step</strong> 是“改一次答案”，<strong>epoch</strong> 是“把整本练习册过一遍”。验证集是“模拟考”，用来决定保存哪一版笔记；测试集是“期末考”，只考一次。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>策展后训练集 375 张，<code>batch=64</code>：</p>
+  <div class="calc">
+每 epoch 步数 = ceil(375 / 64) = ceil(5.86) = <b>6</b> 步（最后一批 375−5·64=55 张）<br>
+60 个 epoch 总步数 = 6 × 60 = <b>360</b> 步<br><br>
+余弦学习率 η(t) = 0.006 · ½(1 + cos(π t/60))：<br>
+t=0&nbsp;&nbsp; → 0.006 × 1.000 = <b>0.00600</b><br>
+t=15&nbsp; → 0.006 × 0.854 = <b>0.00512</b><br>
+t=30&nbsp; → 0.006 × 0.500 = <b>0.00300</b><br>
+t=45&nbsp; → 0.006 × 0.146 = <b>0.00088</b><br>
+t=60&nbsp; → 0.006 × 0.000 = <b>0.00000</b>
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p><strong>为什么按验证集选模型？</strong> 训练损失持续下降不代表泛化变好（可能过拟合）。验证集不参与梯度更新，是“没见过但已知答案”的代理，用它挑出泛化最好的一版。</p>
+  <p><strong>为什么测试集只能用一次？</strong> 一旦你根据测试分数反复调参，测试集就事实上参与了模型选择，不再独立，报出的分数会乐观。规范做法：验证集调参 → 测试集只汇报最终结果。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>把测试集当验证集反复用</strong>：这是最常见的隐性泄漏。</li>
+    <li><strong>用训练集统计量做验证/测试归一化</strong>：必须用<strong>训练集</strong>的 μ、σ。</li>
+    <li><strong>验证集太小就下结论</strong>：47 张源图时，1 张就占 1/47≈2.1%，波动很大，所以要多种子取平均。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>若训练集 469 张、<code>batch=64</code>，每 epoch 多少步？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>ceil(469/64) = ceil(7.33) = <strong>8</strong> 步。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -789,6 +1322,47 @@
 <figcaption><b>图 9.1</b> 水平翻转沿竖直轴镜像，“上”方向不变；垂直翻转沿水平轴镜像，会给模型喂错标签。这是本任务最值得记住的知识点。</figcaption>
 </figure>
 
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>增强的前提是<strong>不改变标签的含义</strong>。你可以让照片左右照镜子（“上”还在上），但不能把它倒过来（“上”就变成下了）——否则等于故意教错。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>用坐标描述“上”方向向量 <code>u = (0, −1)</code>（y 轴向下为正）。</p>
+  <div class="calc">
+水平翻转矩阵 H = [[−1,0],[0,1]]：<br>
+&nbsp;&nbsp;H · u = (−1·0 + 0·(−1), 0·0 + 1·(−1)) = (0, −1) = u　<b>方向不变 ✓</b><br><br>
+垂直翻转矩阵 V = [[1,0],[0,−1]]：<br>
+&nbsp;&nbsp;V · u = (0, +1) = <b>−u</b>（“上”翻成了“下”）✗
+  </div>
+  <p>所以 <code>augment</code> 先用水平翻转、再做随机 90° 旋转，标签仍然正确。</p>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>设正立源图 <code>I</code>，“上”向量为 <code>u</code>。顺时针旋转 k 次记为 <code>R_k</code>，则样本的“上”方向是 <code>R_k·u</code>，标签是 k。水平翻转 <code>H</code> 满足 <code>H·u = u</code>，所以翻转后再旋转：</p>
+  <p class="formula">上方向 = R<sub>k</sub>·H·u = R<sub>k</sub>·u　→ 标签仍是 k</p>
+  <p>而垂直翻转 <code>V·u = −u</code>，旋转后上方向变为 <code>R_k·(−u)</code>，对应标签变成 <code>(k+2) mod 4</code>——标签被系统性改错。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>“翻转反正能扩数据就都加上”</strong>：垂直翻转会把标签 0↔2、1↔3 对调，训练直接学歪。</li>
+    <li><strong>翻转顺序放错</strong>：必须先翻转、再旋转；顺序反了，翻转轴也跟着转了，语义会变。</li>
+    <li><strong>以为旋转增强会引入新信息</strong>：它只是把同一张图的四个朝向都喂给模型，不增加新内容，但能消除朝向偏差。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>为什么“旋转 90°”是合法增强，而“垂直翻转”不是？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>旋转 90° 恰好对应本任务的四个类别，标签会随之更新且自洽；垂直翻转改变了“上”的定义，却仍沿用旧标签，属于<strong>给图片配错答案</strong>。</p>
+  </details>
+</div>
+
 <h3 id="c9-3">9.3 数据策展：数据质量决定上限</h3>
 <p>随机照片里约一半根本没有上下线索（特写、俯拍、纹理、抽象图），旋转 90° 后依然“看起来合理”。模型对这类图<strong>本质无法判断</strong>——不是模型不够大，而是信息不在图里。</p>
 <p>一个简单可解释的线索是“天空在上”：正立照片顶部通常比底部亮。<code>up_cue = 顶部 16 行平均亮度 − 底部 16 行平均亮度</code>，据此过滤掉歧义图。</p>
@@ -817,6 +1391,44 @@
 </svg>
 <figcaption><b>图 9.2</b> 用 <code>--min-cue 60</code> 保留右侧“有明确上下线索”的照片后，准确率从约 64% 提升到 96%+。这是“数据质量决定上限”的典型案例。</figcaption>
 </figure>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>老师问你“这张纸哪边朝上”，但纸上只有一堆均匀的花纹——<strong>你自己也不知道答案</strong>。模型同理：信息不在图里，再大的网络也只能瞎猜。与其让它硬学，不如先把这些注定不可判的题<strong>移出训练集</strong>。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p><code>up_cue</code> = 顶部 16 行平均亮度 − 底部 16 行平均亮度（0–255 尺度）：</p>
+  <div class="calc">
+照片甲：顶部均值 180，底部均值 40 → cue = <b>+140</b> → 保留（天空在上，线索强）<br>
+照片乙：顶部均值 120，底部均值 80 → cue = <b>+40</b>　→ 低于阈值 60，过滤<br>
+照片丙：顶部均值 90，底部均值 130 → cue = <b>−40</b>　→ 可能是倒置/无天空，过滤
+  </div>
+  <p>在 993 张上跑一遍，阈值 60 大约保留 469 张。</p>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>旋转任务里，类别 k 的样本“上方向”为 <code>R_k·u</code>。若整张图旋转后仍与某个其他旋转版本相似，则不同类别的输入分布高度重叠，贝叶斯最优分类器也无法区分——<strong>这是上限，而不是模型能力问题</strong>。用“顶到底亮度差”作为可判性的廉价代理，把分布重叠的样本过滤掉，让剩下的任务条件更可分。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>阈值设太高</strong>：数据太少，模型欠拟合；本项目默认 60 是实测折中。</li>
+    <li><strong>用策展后的分数去和外行比较</strong>：要说明“这是在有明确上下线索的照片上”的准确率，否则有误导。</li>
+    <li><strong>把策展当万能</strong>：更好的多线索（人脸、文字、透视）能进一步扩大可判范围，但那是另一个课题。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>某照片顶部 16 行均值 120，底部 16 行均值 80，在默认 <code>--min-cue 60</code> 下会被保留吗？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>cue = 120 − 80 = 40 &lt; 60，<strong>会被过滤</strong>。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -876,6 +1488,48 @@
 </svg>
 <figcaption><b>图 10.1</b> 错误分析把“准确率 96%”翻译成“到底哪两类在打架”，从而指导下一步改进。</figcaption>
 </figure>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>混淆矩阵就像一份“错误类型清单”。总数的准确率只告诉你“考了多少分”，矩阵才告诉你“<strong>哪几道题总做错</strong>”，从而知道该补哪一块。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>用图 10.1 的数字（每类 47 个源图，共 188 个测试样本）：</p>
+  <div class="calc">
+正确数 = 46 + 46 + 46 + 46 = <b>184</b><br>
+准确率 = 184 / 188 = <b>0.979</b>（错 4 个）<br><br>
+类别 0（上）：<br>
+&nbsp;&nbsp;召回率 recall = 46 / (46+1+0+1) = 46/48 = <b>0.958</b>　（该类有多少被找出来）<br>
+&nbsp;&nbsp;精确率 precision = 46 / (46+1+0+1) = 46/48 = <b>0.958</b>　（判为该类的有多少是对的）<br><br>
+错误集中在相邻类（0→1、1→2、2→3、3→0），说明模型大体学会方向，只是边界样本模糊。
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>矩阵元素 <code>M[i][j]</code> 表示“真实 i、预测 j”的样本数。于是：</p>
+  <p class="formula">准确率 = <span class="frac"><span class="num">Σ<sub>i</sub> M[i][i]</span><span class="den">Σ<sub>i,j</sub> M[i][j]</span></span>　　recall<sub>i</sub> = <span class="frac"><span class="num">M[i][i]</span><span class="den">Σ<sub>j</sub> M[i][j]</span></span></p>
+  <p>若错误集中在 <code>0↔2</code>（差 180°），说明模型没抓住真正的方向性结构；若集中在相邻类，往往是样本本身处在“可判边界”或训练不足。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>只看准确率</strong>：类别不均衡时，全预测多数类也能有高准确率，必须看矩阵与逐类指标。</li>
+    <li><strong>把行、列含义记反</strong>：本项目约定<strong>行 = 真实，列 = 预测</strong>；反了会把“漏检”误读成“误报”。</li>
+    <li><strong>在测试集上做错误分析后反复改模型</strong>：等于把测试集当验证集用，破坏独立性。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>图 10.1 的矩阵里，一共错了几张？都错成了什么方向？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>错 <strong>4</strong> 张；全部错成了<strong>相邻方向</strong>（0→1、1→2、2→3、3→0），没有出现 180° 的大错，说明方向结构基本学到了。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -919,6 +1573,45 @@
 </svg>
 <figcaption><b>图 11.1</b> 训练产物 → C 源码 → 单文件可执行。整个推理只依赖 libc 与随仓库附带的 stb 单头库。</figcaption>
 </figure>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>训练得到的“模型”本质上就是<strong>一堆数字</strong>。部署就是把这堆数字按固定顺序打印成 C 语言数组，再用同样的顺序在 C 里做乘加。只要两边顺序一致，结果就一致。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>卷积权重形状 <code>[OC, IC, 3, 3]</code>，行主序展平，索引公式：</p>
+  <div class="calc">
+index = ((oc·IC + ic)·3 + kh)·3 + kw<br><br>
+取 oc=2, ic=1, kh=0, kw=2，IC=3：<br>
+index = ((2·3 + 1)·3 + 0)·3 + 2 = (7·3)·3 + 2 = 63 + 2 = <b>65</b><br><br>
+数组大小：W1 = 8·3·3·3 = <b>216</b>，W2 = 16·8·3·3 = <b>1152</b>，W3 = 4·4096 = <b>16384</b>
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>C 端 <code>conv3x3</code> 里的核索引 <code>K[((oc*C+c)*3+i)*3+j]</code>，正是上面公式令 <code>kh=i, kw=j</code> 的形式——所以导出的布局必须写成 <code>[oc][ic][kh][kw]</code>。全连接则是 <code>[out][in]</code>，对应 <code>Wm[o*IN + i]</code>。</p>
+  <p>另外，<code>weights.h</code> 头部写入源 <code>best.npz</code> 的 md5，实现“<strong>权重与代码版本绑定</strong>”：npz 变了就必须重新导出，否则对拍会失败。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>维度顺序反了</strong>：比如导出成 <code>[ic][oc][kh][kw]</code>，C 端索引就会全错——这正是对拍要抓的东西。</li>
+    <li><strong>只导出权重、忘了 NORM_MEAN/NORM_STD</strong>：输入归一化用了错误的常数，logits 会整体偏移。</li>
+    <li><strong>重训后忘记重新导出</strong>：C 端还跑着旧权重，看着“能跑”，其实是过期模型。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p><code>oc=1, ic=2, kh=1, kw=0, IC=3</code> 时，W1 的平坦索引是多少？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>((1·3 + 2)·3 + 1)·3 + 0 = (5·3 + 1)·3 = 16·3 = <strong>48</strong>。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -986,6 +1679,49 @@
 </svg>
 <figcaption><b>图 12.2</b> TTA 用对称性把 4 次前向的“投票”对齐后平均，降低单次预测的方差。Python 与 C 使用同一对齐规则，所以对拍仍然成立。</figcaption>
 </figure>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>把同一段中文分别交给两位译者翻译，再逐句核对——若两人用词几乎一致，说明翻译没跑偏。对拍就是让 <strong>numpy 和 C 两位“译者”</strong>处理同一张图，比对输出是否几乎相同。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>真实类别 <code>k=1</code>。把输入顺时针转 <code>r</code> 后，网络应输出类别 <code>(k+r) mod 4</code>。设各视角的 logits 是“正确类独热”：</p>
+  <div class="calc">
+r=0 → 独热在 (1+0)%4 = 1　→ [0,1,0,0]<br>
+r=1 → 独热在 (1+1)%4 = 2　→ [0,0,1,0]<br>
+r=2 → 独热在 (1+2)%4 = 3　→ [0,0,0,1]<br>
+r=3 → 独热在 (1+3)%4 = 0　→ [1,0,0,0]<br><br>
+反向对齐：第 r 次的第 j 个分数记到原类别 (j−r) mod 4，再求平均。<br>
+r=0 把分记到 1，r=1 也记到 1，r=2、r=3 同样 → 类别 1 累计到 4 分，其余为 0，<br>
+所以平均后 <b>k=1</b> 的分数最高（真实模型各视角不会这么极端，但趋势一致）。
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>变换的<strong>复合关系</strong>给出平移规律：先转 k、再转 r，等于转 <code>(k+r) mod 4</code>。所以“对输入做变换 r”对应“对标签做平移 +r”。TTA 要恢复原坐标，就得把输出按 <code>−r</code> 平移：</p>
+  <p class="formula">acc[(j − r) mod 4] += logits<sub>r</sub>[j]</p>
+  <p>容差 1e-4 的来源：float32 有效精度约 <code>1.2e-7</code>，卷积要累加成百上千项且两实现加法顺序不同，误差累积到 <code>1e-5</code> 量级；1e-4 能容忍正常舍入，又能抓住真正的实现错误。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>用不同源的对拍</strong>：Python 读的 <code>best.npz</code> 必须与 C 的 <code>weights.h</code> 同源，否则对不上。</li>
+    <li><strong>改完推理代码不重跑对拍</strong>：对拍同时是版本回归测试，每次改动都要跑。</li>
+    <li><strong>把 TTA 对齐方向写反</strong>：该加 <code>+r</code> 却写成 <code>−r</code>，预测会整体偏移，对拍也可能因两边一致而漏掉——要靠单测锁死规则。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>若把输入转了 <code>r=3</code> 后网络预测类别为 0，那么原图的类别是多少？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>原类别 = (预测 − r) mod 4 = (0 − 3) mod 4 = <strong>1</strong>。</p>
+  </details>
+</div>
 </section>
 
 <!-- ================================================================= -->
@@ -1008,6 +1744,45 @@
 </svg>
 <figcaption><b>图 13.1</b> 进阶可以做 int8 量化（体积与速度）、更深网络（精度）、任意角度回归（实用纠偏）。这些都留给读者动手。</figcaption>
 </figure>
+
+<div class="block b-intuition">
+  <span class="tag">① 直觉</span>
+  <p>量化就像把“精确到毫米”的尺子换成“精确到厘米”的尺子：量得快、占得少，但会丢一点精度。对神经网络，只要关键的相对大小还在，分类结果往往几乎不变。</p>
+</div>
+
+<div class="block b-handcalc">
+  <span class="tag">② 手算</span>
+  <p>设某个权重张量里 <code>max|x| = 1</code>，则缩放因子 <code>s = 1/127 ≈ 0.007874</code>：</p>
+  <div class="calc">
+x = +0.500 → q = round(0.500 / 0.007874) = round(63.5) = <b>64</b><br>
+&nbsp;&nbsp;反量化 ≈ 64 × 0.007874 = <b>0.5039</b>（误差 0.0039）<br>
+x = −0.900 → q = round(−0.900 / 0.007874) = round(−114.3) = <b>−114</b><br>
+&nbsp;&nbsp;反量化 ≈ −114 × 0.007874 = <b>−0.8977</b><br><br>
+整数乘加用 int32 累加，最后统一乘回 s_x·s_w。
+  </div>
+</div>
+
+<div class="block b-derive">
+  <span class="tag">③ 推导</span>
+  <p>对称量化把连续值线性映射到 <code>[−127, 127]</code>：<code>s = max|x| / 127</code>，<code>q = round(x/s)</code>，还原 <code>x ≈ q·s</code>。卷积里 <code>Σ (q_x s_x)(q_w s_w) = s_x s_w Σ q_x q_w</code>，缩放因子可提到求和之外，所以<strong>整数核只需做 int32 乘加</strong>，最后统一缩放——这是量化能加速的根本原因。</p>
+</div>
+
+<div class="block b-pitfall">
+  <span class="tag">④ 误区</span>
+  <ul>
+    <li><strong>用 int8 累加中间结果</strong>：几百项相加必然溢出，必须用 int32。</li>
+    <li><strong>所有层共用一个 s</strong>：各层动态范围差异大，通常需要逐张量（甚至逐通道）标定。</li>
+    <li><strong>忽略舍入偏差</strong>：大量小权重被四舍五入到 0，可能明显掉点，需校准或混合精度。</li>
+  </ul>
+</div>
+
+<div class="block b-quiz">
+  <span class="tag">⑤ 自测</span>
+  <p>若 <code>max|x| = 1</code>，<code>x = 0.25</code> 量化后是多少（约）？</p>
+  <details class="ans"><summary>看答案</summary>
+    <p>s ≈ 0.007874，q = round(0.25 / 0.007874) = round(31.75) ≈ <strong>32</strong>，反量化 ≈ 0.252。</p>
+  </details>
+</div>
 
 <table>
 <thead><tr><th>方向</th><th>做法</th><th>预期收益</th></tr></thead>
