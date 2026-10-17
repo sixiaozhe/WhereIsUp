@@ -10,16 +10,20 @@
 bash scripts/download.sh 2000 400
 bash scripts/prepare.sh 64
 
-# 2) 训练（默认自动做数据策展：只保留有明确上下线索的照片；输出 data/best.npz 等）
-PYTHONPATH=src python3 src/train.py
+# 2) 训练（多随机种子，按验证集选最优；默认自动做数据策展）
+#    单种子：PYTHONPATH=src python3 src/train.py
+PYTHONPATH=src python3 src/train.py --seeds 0,1,2,3,4
+cat data/seed_summary.csv   # 各随机种子的 val/test（含 TTA）
 
 # 3) 导出权重为 C 数组
 PYTHONPATH=src python3 src/export_weights.py
 
-# 4) 编译并推理
+# 4) 编译并推理（默认开启四方向 TTA，--no-tta 可关闭）
 make -C c whereisup
 ./c/whereisup path/to/photo.jpg -o fixed.png
 ```
+
+当前策展后（cue ≥ 60，469 张源图）模型：单次与 TTA 的 test 均 100%（测试集仅 47 张源图；5 个种子的 test 均值约 98%）。
 
 ## 目录
 

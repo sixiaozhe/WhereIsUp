@@ -39,7 +39,7 @@
 
 注意 `rotate_cw` 用 `np.rot90(..., -k)`（负号代表顺时针），`correct` 用 `np.rot90(..., k)`（正号代表逆时针），二者互为逆操作。`tests/test_data.py:30` 的 `test_correct_undoes_rotation` 就是在验证这一点：对 $k=0,1,2,3$，`correct(rotate_cw(img, k), k)` 必须还原为原图。
 
-C 端用整数旋转表达同一件事：`correct` 等价于顺时针旋转 $(4-k)\bmod 4$ 次，所以 `c/main.c:82` 写的是 `rotate90cw(full, w, h, 3, fixed, (4 - k) % 4)`。
+C 端用整数旋转表达同一件事：`correct` 等价于顺时针旋转 $(4-k)\bmod 4$ 次，所以 `c/main.c:112` 写的是 `rotate90cw(full, w, h, 3, fixed, (4 - k) % 4)`。
 
 ### 1.2 数据集大小与标签来源
 
@@ -121,7 +121,7 @@ def norm_stats(imgs):
 - `reshape(-1, 3)` 把所有像素摊平成 `(N*H*W, 3)`，再对每个通道求统计量。
 - 标准差可能为 0（例如某通道全同色），用 `np.where` 兜底为 1，避免除零。
 
-训练时 `mean/std` 由训练集算出（`src/train.py:102`），并随权重一起保存到 `data/norm.npz`（`src/train.py:121`），导出给 C 端。归一化的完整链条在 `src/data.py:113`：
+训练时 `mean/std` 由训练集算出（`src/train.py:121`），并随权重一起保存到 `data/norm.npz`（`src/train.py:144`），导出给 C 端。归一化的完整链条在 `src/data.py:113`：
 
 ```python
 def normalize(imgs, mean, std):
@@ -130,7 +130,7 @@ def normalize(imgs, mean, std):
     return np.transpose(x, (0, 3, 1, 2))
 ```
 
-C 端 `c/main.c:15` 的 `build_input` 是它的逐像素翻版（注意已是单张图，无 batch 维）：
+C 端 `c/main.c:16` 的 `build_input` 是它的逐像素翻版（注意已是单张图，无 batch 维）：
 
 ```c
 float v = hwc[(y * 64 + x) * 3 + c] / 255.0f;
@@ -347,7 +347,7 @@ loss = -np.log(p[np.arange(n), y] + 1e-12).mean()
 
 ## 6. 反向传播
 
-反向传播就是链式法则的工程化：损失对某参数的梯度 = "损失对输出的梯度 × 输出对参数的梯度"。`Net` 把所有层放进一个列表（`src/nn.py:154`），前向顺序调用 `forward`，反向用 `reversed(net.layers)` 顺序调用 `backward`（`src/train.py:43`）。
+反向传播就是链式法则的工程化：损失对某参数的梯度 = "损失对输出的梯度 × 输出对参数的梯度"。`Net` 把所有层放进一个列表（`src/nn.py:154`），前向顺序调用 `forward`，反向用 `reversed(net.layers)` 顺序调用 `backward`（`src/train.py:46`）。
 
 设损失为 $L$，每层收到来自上一层的 $\mathrm{d}L/\mathrm{d}\text{out}$，要算出并返回 $\mathrm{d}L/\mathrm{d}\text{in}$，同时把参数梯度存下来。
 
@@ -448,7 +448,7 @@ $$p \leftarrow p - \eta\, g$$
 
 $$v \leftarrow \mu v - \eta g,\qquad p \leftarrow p + v$$
 
-$\mu$ 通常取 0.9。动量让方向一致的分量累积、来回震荡的分量抵消，从而更稳更快。实现 `src/train.py:46`：
+$\mu$ 通常取 0.9。动量让方向一致的分量累积、来回震荡的分量抵消，从而更稳更快。实现 `src/train.py:49`：
 
 ```python
 for p, g in net.params_and_grads():
@@ -464,7 +464,7 @@ for p, g in net.params_and_grads():
 
 学习率 $\eta$ 是最重要、最该先调的超参：太大不收敛（loss 震荡甚至爆掉），太小收敛慢。经验做法是**先大后小**：前期大步快跑，后期小步细化。
 
-本项目用**余弦退火**（`src/train.py:15`）：
+本项目用**余弦退火**（`src/train.py:18`）：
 
 $$\eta(t) = \eta_0 \cdot \tfrac12\left(1 + \cos\!\left(\pi \cdot \frac{t}{T}\right)\right)$$
 
@@ -486,7 +486,7 @@ $t$ 是当前 epoch，$T$ 是总 epoch 数。$t=0$ 时 $\eta=\eta_0$，$t=T$ 时
 - **batch**：一次前向+反向送入的样本数，本项目默认 64（`--batch`）。
 - **epoch**：把训练集每个样本大致用一遍。
 
-每个 epoch 先 `order = rng.permutation(n)` 打乱样本顺序（`src/train.py:33`），再按 batch 切段。`train_steps`（`src/train.py:19`）对每个 batch：
+每个 epoch 先 `order = rng.permutation(n)` 打乱样本顺序（`src/train.py:37`），再按 batch 切段。`train_steps`（`src/train.py:22`）对每个 batch：
 
 ```python
 aug, labels = D.augment(imgs[idx], rng)   # 在线旋转增强，标签由旋转角给出
@@ -499,17 +499,17 @@ for layer in reversed(net.layers):
 # 动量更新参数（学习率 lr 由调用方按 epoch 传入，epoch 内恒定）
 ```
 
-注意 `train_steps` 的 `y` 参数其实没被使用：**标签完全来自 `D.augment` 内部产生的旋转角**（`src/train.py:38`）。这是自标注的核心。
+注意 `train_steps` 的 `y` 参数其实没被使用：**标签完全来自 `D.augment` 内部产生的旋转角**（`src/train.py:42`）。这是自标注的核心。
 
 ### 8.2 验证集选模与检查点
 
-`main`（`src/train.py:86`）每个 epoch 结束后：
+`train_run`（`src/train.py:112`，单个随机种子的完整流程）每个 epoch 结束后：
 
-1. 在**验证集**上评估。验证用的是 `eval_rotated`（`src/train.py:75`）：把每张验证源图分别旋转 $k=0,1,2,3$，构造出四类样本再评估——这才是与真实使用一致的评价方式。
-2. 若验证准确率创新高，保存权重到 `data/best.npz`，同时保存归一化常数到 `data/norm.npz`（`src/train.py:118-121`）——即"**按验证集选最优模型**"。
-3. 追加一行到 `training_curve.csv`：`epoch, train_loss, val_acc`（`src/train.py:122`）。
+1. 在**验证集**上评估。验证用的是 `eval_rotated`（`src/train.py:77`）：把每张验证源图分别旋转 $k=0,1,2,3$，构造出四类样本再评估——这才是与真实使用一致的评价方式。
+2. 若验证准确率创新高，保存权重到 `data/best.npz`，同时保存归一化常数到 `data/norm.npz`（`src/train.py:141-144`）——即"**按验证集选最优模型**"。
+3. 追加一行到 `training_curve.csv`：`epoch, train_loss, val_acc`（`src/train.py:145`）。
 
-训练结束后重新 `net.load("data/best.npz")`，在**测试集**上评估并打印混淆矩阵（`src/train.py:127-131`）。
+训练结束后重新 `net.load("data/best.npz")`，在**测试集**上评估并打印混淆矩阵（`src/train.py:150-152`）。
 
 ### 8.3 如何读 `training_curve.csv`
 
@@ -525,6 +525,19 @@ epoch,train_loss,val_acc
 ```
 
 健康的训练应当是 `train_loss` 总体下降、`val_acc` 总体上升。若 `train_loss` 下降而 `val_acc` 停滞或下降，多半是过拟合（第 9 章）；若两者都下不去，则是欠拟合（模型太小/训练不足/学习率不合适）。这份曲线对应的验证集只有 47 张图，因此 `val_acc` 会以 1/47≈0.021 为台阶跳动。
+
+### 8.4 多随机种子：让选模更可靠
+
+验证集只有几十张时，单次训练的 `best val` 带有随机性（权重初始化、样本打乱、增强顺序都受种子影响）。同一套超参换一个种子，测试准确率可能在 96%–100% 之间跳动。
+
+`src/train.py` 的 `--seeds` 一次训练多个种子，每个种子独立切分、独立训练、各自保存到 `data/seedN/`，最后按**验证集**（不是测试集）挑最优并复制到 `data/best.npz`：
+
+```bash
+PYTHONPATH=src python3 src/train.py --seeds 0,1,2,3,4
+cat data/seed_summary.csv
+```
+
+`data/seed_summary.csv` 同时给出每个种子的单次与 TTA 的 val/test 准确率。**用测试集挑种子是作弊**：测试集只能用来在流程结束后汇报一次结果，选模永远只看验证集。
 
 ---
 
@@ -574,7 +587,7 @@ $$p \leftarrow p - \eta\,(g + \lambda p)$$
 | 全部 993 张 | ≈ 0.70 |
 | 按线索强度分档：最弱 25% | 0.12 |
 | 最强 25% | 0.92 |
-| 策展后（cue ≥ 60，469 张） | **val 0.98 / test 0.97** |
+| 策展后（cue ≥ 60，469 张） | **val 0.96–0.99 / test 0.97–1.00** |
 
 结论：**数据质量与标注的可判别性，往往比模型容量更决定上限**。先问"这条信息在输入里到底有没有"，再考虑加深网络。想复现未策展结果：`--min-cue -1e9`。
 
@@ -584,7 +597,7 @@ $$p \leftarrow p - \eta\,(g + \lambda p)$$
 
 ## 10. 评估与错误分析
 
-只用"准确率"一个数字，会掩盖模型到底错在哪。**混淆矩阵**把"真实类别 × 预测类别"的计数摊开，`src/train.py:69` 构造、`src/train.py:130` 打印，行列含义为：**行=真实 $k$，列=预测 $k$**。
+只用"准确率"一个数字，会掩盖模型到底错在哪。**混淆矩阵**把"真实类别 × 预测类别"的计数摊开，`src/train.py:71` 构造、`src/train.py:156` 打印，行列含义为：**行=真实 $k$，列=预测 $k$**。
 
 ```
         pred0 pred1 pred2 pred3
@@ -680,10 +693,21 @@ PYTHONPATH=src python3 src/infer_py.py "$f" --logits   # numpy logits
 
 ```bash
 bash scripts/check_parity.sh 8
-# 输出示例：ok max|Δ|=...  /  parity passed for 8 images (tol 1e-4)
+# 输出示例：ok [tta] max|Δ|=...  /  ok [single] max|Δ|=...
+# parity passed for 16 checks (8 images x 2 modes, tol 1e-4)
 ```
 
-阈值定在 1e-4 是合理的：float32 累加顺序不同会带来约 $10^{-6}\sim10^{-5}$ 量级的舍入差，1e-4 既能容忍正常浮点误差，又能抓住任何真正的实现错误。对拍脚本同时充当**版本回归测试**：每次改权重或改推理代码都要重跑。
+阈值定在 1e-4 是合理的：float32 累加顺序不同会带来约 $10^{-6}\sim10^{-5}$ 量级的舍入差，1e-4 既能容忍正常浮点误差，又能抓住任何真正的实现错误。对拍脚本同时充当**版本回归测试**：每次改权重或改推理代码都要重跑。脚本默认会**同时跑 TTA 与 `--no-tta` 两条路径**（共 2n 次比较）。
+
+### 12.3 测试时增强（TTA）
+
+**TTA**（Test-Time Augmentation）是在推理阶段对同一输入做多种变换、把结果融合，以降低单次前向的方差。旋转任务有一个天然的对称性可用：把输入顺时针再转 $r\cdot90^\circ$，真实类别就从 $k$ 变成 $(k+r)\bmod4$。于是对 $r=0,1,2,3$ 各前向一次，把第 $r$ 次结果里第 $j$ 个分数**反向平移**到类别 $(j-r)\bmod4$ 上再求平均，就得到对原图的估计。这个对齐规则实现在 `src/infer_py.py:20` 的 `tta_average`：
+
+```python
+acc[..., (j - r) % 4] += logits[..., j]   # 平均后再 softmax
+```
+
+C 端在 `c/main.c:83` 用同一规则：对 64×64 小图调用 `rotate90cw` 得到 4 个视角，累加对齐后的 logits，最后 `softmax4`。默认开启，可用 `--no-tta` 关闭；两边默认行为一致，所以对拍仍然成立。实测在本项目上，多随机种子的测试集平均准确率会从约 97.9% 提升到约 98.7%（个别模型本已接近满分，提升不明显，但 TTA 显著降低了"差一张图"的方差）。
 
 ---
 
@@ -716,13 +740,13 @@ $$s = \frac{\max|x|}{127},\qquad q = \operatorname{round}\!\left(\frac{x}{s}\rig
 bash scripts/download.sh 2000 400
 bash scripts/prepare.sh 64
 
-# 训练
-PYTHONPATH=src python3 src/train.py --epochs 10
+# 训练（多随机种子，按验证集选最优；默认推理开启四方向 TTA）
+PYTHONPATH=src python3 src/train.py --seeds 0,1,2,3,4
 
 # 导出权重为 C 数组
 PYTHONPATH=src python3 src/export_weights.py
 
-# 编译 + 推理 + 纠偏
+# 编译 + 推理 + 纠偏（--no-tta 可关闭测试时增强）
 make -C c whereisup
 ./c/whereisup path/to/photo.jpg -o fixed.png
 
